@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>网络拓扑可视化平台</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- 顶部工具栏 -->
+  <header id="toolbar">
+    <div class="toolbar-left">
+      <h1 class="logo">&#x2B21; 拓扑可视化</h1>
+      <div class="toolbar-group">
+        <button id="btn-import" title="导入拓扑数据 (Ctrl+I)">&#x1F4C2; 导入</button>
+        <button id="btn-export" title="导出拓扑数据 (Ctrl+E)">&#x1F4BE; 导出</button>
+        <button id="btn-sample" title="加载示例数据">&#x1F4CB; 示例</button>
+      </div>
+      <div class="toolbar-separator"></div>
+      <div class="toolbar-group">
+        <button id="btn-auto-layout" title="自动布局">&#x1F504; 布局</button>
+        <button id="btn-fit-view" title="适应画布 (F)">&#x229E; 适应</button>
+        <button id="btn-save-layout" title="保存布局">&#x1F4BF; 保存</button>
+      </div>
+      <div class="toolbar-separator"></div>
+      <div class="toolbar-group">
+        <button id="btn-collapse-all" title="折叠所有分组">&#x1F4C1; 折叠</button>
+        <button id="btn-expand-all" title="展开所有分组">&#x1F4C2; 展开</button>
+      </div>
+    </div>
+    <div class="toolbar-right">
+      <div class="search-box">
+        <input type="text" id="search-input" placeholder="搜索节点 (Ctrl+F)..." autocomplete="off">
+        <div id="search-results" class="search-dropdown"></div>
+      </div>
+      <div class="toolbar-group">
+        <button id="btn-clear-alerts" title="清除告警">&#x1F515; 清除告警</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 主体区域 -->
+  <main id="main-container">
+    <!-- 左侧面板：拓扑概览 -->
+    <aside id="left-panel">
+      <div class="panel-section">
+        <h3>&#x1F4CA; 拓扑概览</h3>
+        <div id="topology-stats" class="stats-grid">
+          <div class="stat-item"><span class="stat-label">节点</span><span id="stat-nodes" class="stat-value">0</span></div>
+          <div class="stat-item"><span class="stat-label">连线</span><span id="stat-links" class="stat-value">0</span></div>
+          <div class="stat-item"><span class="stat-label">分组</span><span id="stat-groups" class="stat-value">0</span></div>
+          <div class="stat-item"><span class="stat-label">告警</span><span id="stat-alerts" class="stat-value">0</span></div>
+        </div>
+      </div>
+      <div class="panel-section">
+        <h3>&#x1F3F7;&#xFE0F; 节点筛选</h3>
+        <div id="type-filters" class="filter-list">
+          <label class="filter-item"><input type="checkbox" data-type="datacenter" checked> &#x1F3E2; 机房</label>
+          <label class="filter-item"><input type="checkbox" data-type="switch" checked> &#x1F500; 交换机</label>
+          <label class="filter-item"><input type="checkbox" data-type="server" checked> &#x1F5A5;&#xFE0F; 服务器</label>
+          <label class="filter-item"><input type="checkbox" data-type="database" checked> &#x1F5C4;&#xFE0F; 数据库</label>
+          <label class="filter-item"><input type="checkbox" data-type="gateway" checked> &#x1F310; 网关</label>
+          <label class="filter-item"><input type="checkbox" data-type="app" checked> &#x1F4F1; 业务应用</label>
+        </div>
+      </div>
+      <div class="panel-section">
+        <h3>&#x1F4CB; 分组列表</h3>
+        <div id="group-list" class="group-list"></div>
+      </div>
+    </aside>
+
+    <!-- 画布区域 -->
+    <div id="canvas-container">
+      <canvas id="main-canvas"></canvas>
+      <canvas id="overlay-canvas"></canvas>
+      <!-- 小地图 -->
+      <div id="minimap-container">
+        <canvas id="minimap-canvas"></canvas>
+        <div id="minimap-viewport"></div>
+      </div>
+      <!-- 右键菜单 -->
+      <div id="context-menu" class="context-menu hidden">
+        <div class="context-menu-item" data-action="view-detail">&#x1F4CB; 查看详情</div>
+        <div class="context-menu-item" data-action="trace-up">&#x2B06;&#xFE0F; 追踪上游</div>
+        <div class="context-menu-item" data-action="trace-down">&#x2B07;&#xFE0F; 追踪下游</div>
+        <div class="context-menu-separator"></div>
+        <div class="context-menu-item" data-action="collapse-group">&#x1F4C1; 折叠分组</div>
+        <div class="context-menu-item" data-action="expand-group">&#x1F4C2; 展开分组</div>
+        <div class="context-menu-separator"></div>
+        <div class="context-menu-item" data-action="pin-node">&#x1F4CC; 固定节点</div>
+        <div class="context-menu-item" data-action="unpin-node">&#x1F4CD; 解除固定</div>
+      </div>
+      <!-- 框选框 -->
+      <div id="selection-box" class="selection-box hidden"></div>
+      <!-- 缩放指示器 -->
+      <div id="zoom-indicator" class="zoom-indicator hidden">100%</div>
+    </div>
+
+    <!-- 右侧面板 -->
+    <aside id="right-panel">
+      <!-- 节点详情 -->
+      <div id="detail-panel" class="panel-section hidden">
+        <h3>&#x1F4CB; 节点详情 <button id="btn-close-detail" class="btn-close">&#x2715;</button></h3>
+        <div id="detail-content"></div>
+      </div>
+      <!-- 追踪面板 -->
+      <div id="trace-panel" class="panel-section hidden">
+        <h3>&#x1F50D; 依赖追踪 <button id="btn-close-trace" class="btn-close">&#x2715;</button></h3>
+        <div id="trace-content"></div>
+      </div>
+      <!-- 告警事件列表 -->
+      <div class="panel-section flex-grow">
+        <h3>&#x1F6A8; 告警事件 <span id="alert-count" class="badge">0</span></h3>
+        <div id="event-list" class="event-list"></div>
+      </div>
+      <!-- 影响范围 -->
+      <div id="impact-panel" class="panel-section hidden">
+        <h3>&#x1F4A5; 影响范围</h3>
+        <div id="impact-content"></div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- 底部时间线 -->
+  <footer id="timeline-bar">
+    <div class="timeline-controls">
+      <button id="btn-play" title="播放/暂停">&#x25B6;&#xFE0F;</button>
+      <button id="btn-step-back" title="上一步">&#x23EE;</button>
+      <button id="btn-step-forward" title="下一步">&#x23ED;</button>
+      <select id="play-speed" title="播放速度">
+        <option value="0.5">0.5x</option>
+        <option value="1" selected>1x</option>
+        <option value="2">2x</option>
+        <option value="5">5x</option>
+        <option value="10">10x</option>
+      </select>
+      <span id="timeline-time" class="timeline-time">--:--:--</span>
+    </div>
+    <div class="timeline-track">
+      <input type="range" id="timeline-slider" min="0" max="100" value="0" step="0.1">
+      <div id="timeline-markers" class="timeline-markers"></div>
+    </div>
+    <div class="timeline-info">
+      <span id="event-progress">0 / 0</span>
+    </div>
+  </footer>
+
+  <!-- 隐藏的文件输入 -->
+  <input type="file" id="file-input" accept=".json" class="hidden">
+
+  <!-- 导入验证对话框 -->
+  <div id="validation-dialog" class="dialog hidden">
+    <div class="dialog-overlay"></div>
+    <div class="dialog-content">
+      <h3>&#x26A0;&#xFE0F; 数据验证</h3>
+      <div id="validation-messages"></div>
+      <div class="dialog-actions">
+        <button id="btn-validation-ok" class="btn-primary">继续导入</button>
+        <button id="btn-validation-cancel">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- JS模块加载 -->
+  <script src="js/data-parser.js"></script>
+  <script src="js/layout.js"></script>
+  <script src="js/renderer.js"></script>
+  <script src="js/interaction.js"></script>
+  <script src="js/alert-replay.js"></script>
+  <script src="js/import-export.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
