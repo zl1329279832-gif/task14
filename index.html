@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>网络拓扑可视化 - 告警回放系统</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- 顶部工具栏 -->
+  <header id="toolbar">
+    <div class="toolbar-left">
+      <button id="btn-import" title="导入拓扑数据">
+        <svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 1v10M4 7l4 4 4-4M2 13h12" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        导入
+      </button>
+      <button id="btn-export" title="导出拓扑数据">
+        <svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 11V1M4 5l4-4 4 4M2 13h12" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        导出
+      </button>
+      <button id="btn-export-img" title="导出为图片">
+        <svg width="16" height="16" viewBox="0 0 16 16"><rect x="1" y="2" width="14" height="12" rx="1" stroke="currentColor" stroke-width="1.2" fill="none"/><circle cx="5" cy="6" r="1.5" fill="currentColor"/><path d="M1 11l4-4 3 3 2-2 5 5H1z" fill="currentColor" opacity="0.3"/></svg>
+        截图
+      </button>
+      <div class="separator"></div>
+      <button id="btn-auto-layout" title="自动布局">
+        <svg width="16" height="16" viewBox="0 0 16 16"><rect x="1" y="1" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.2" fill="none"/><rect x="10" y="1" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.2" fill="none"/><rect x="5.5" y="10" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.2" fill="none"/><path d="M3.5 6v2h4v2M12.5 6v2h-4v2" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>
+        自动布局
+      </button>
+      <button id="btn-fit" title="适应画布">
+        <svg width="16" height="16" viewBox="0 0 16 16"><path d="M1 5V1h4M11 1h4v4M15 11v4h-4M5 15H1v-4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        适应
+      </button>
+      <button id="btn-zoom-in" title="放大">+</button>
+      <button id="btn-zoom-out" title="缩小">-</button>
+      <span id="zoom-level">100%</span>
+      <div class="separator"></div>
+      <button id="btn-load-demo" title="加载示例数据">示例数据</button>
+    </div>
+    <div class="toolbar-center">
+      <div class="search-box">
+        <svg width="14" height="14" viewBox="0 0 14 14"><circle cx="6" cy="6" r="4.5" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M9.5 9.5l3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <input type="text" id="search-input" placeholder="搜索节点名称或ID...">
+        <div id="search-results" class="search-results hidden"></div>
+      </div>
+    </div>
+    <div class="toolbar-right">
+      <span id="topo-stats"></span>
+    </div>
+  </header>
+
+  <!-- 主体区域 -->
+  <div id="main-container">
+    <!-- 左侧分组面板 -->
+    <aside id="group-panel" class="panel">
+      <div class="panel-header">
+        <h3>拓扑分组</h3>
+        <button id="btn-collapse-all" title="全部折叠">折叠</button>
+      </div>
+      <div id="group-list" class="panel-body"></div>
+      <div class="panel-header" style="margin-top:8px">
+        <h3>图例</h3>
+      </div>
+      <div id="legend" class="panel-body">
+        <div class="legend-item"><span class="legend-icon legend-datacenter"></span>机房</div>
+        <div class="legend-item"><span class="legend-icon legend-switch"></span>交换机</div>
+        <div class="legend-item"><span class="legend-icon legend-server"></span>服务器</div>
+        <div class="legend-item"><span class="legend-icon legend-database"></span>数据库</div>
+        <div class="legend-item"><span class="legend-icon legend-gateway"></span>网关</div>
+        <div class="legend-item"><span class="legend-icon legend-app"></span>业务应用</div>
+        <hr>
+        <div class="legend-item"><span class="legend-dot" style="background:#4caf50"></span>正常</div>
+        <div class="legend-item"><span class="legend-dot" style="background:#ff9800"></span>告警</div>
+        <div class="legend-item"><span class="legend-dot" style="background:#f44336"></span>故障</div>
+        <div class="legend-item"><span class="legend-dot" style="background:#9e9e9e"></span>离线</div>
+      </div>
+    </aside>
+
+    <!-- 画布区域 -->
+    <div id="canvas-container">
+      <canvas id="topo-canvas"></canvas>
+      <!-- 框选矩形 -->
+      <div id="select-rect" class="hidden"></div>
+      <!-- 小地图 -->
+      <div id="minimap-container">
+        <canvas id="minimap-canvas" width="180" height="120"></canvas>
+        <div id="minimap-viewport"></div>
+      </div>
+    </div>
+
+    <!-- 右侧面板 -->
+    <aside id="detail-panel" class="panel hidden">
+      <div class="panel-header">
+        <h3 id="detail-title">节点详情</h3>
+        <button id="btn-close-detail" title="关闭">✕</button>
+      </div>
+      <div id="detail-content" class="panel-body"></div>
+      <div id="impact-section" class="hidden">
+        <div class="panel-header"><h3>影响分析</h3></div>
+        <div id="impact-upstream" class="panel-body">
+          <h4>↑ 受影响的业务</h4>
+          <ul id="upstream-list"></ul>
+        </div>
+        <div id="impact-downstream" class="panel-body">
+          <h4>↓ 依赖的设备</h4>
+          <ul id="downstream-list"></ul>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- 底部告警时间线 -->
+  <footer id="alarm-bar">
+    <div class="alarm-controls">
+      <button id="btn-play" title="播放">▶</button>
+      <button id="btn-pause" title="暂停" class="hidden">⏸</button>
+      <button id="btn-stop" title="停止">⏹</button>
+      <button id="btn-step-back" title="上一步">⏮</button>
+      <button id="btn-step-forward" title="下一步">⏭</button>
+      <select id="play-speed">
+        <option value="0.5">0.5x</option>
+        <option value="1" selected>1x</option>
+        <option value="2">2x</option>
+        <option value="5">5x</option>
+        <option value="10">10x</option>
+      </select>
+      <span id="alarm-time">--:--:--</span>
+    </div>
+    <div class="alarm-timeline">
+      <div id="timeline-track">
+        <canvas id="timeline-canvas" height="32"></canvas>
+        <div id="timeline-cursor"></div>
+      </div>
+    </div>
+    <div class="alarm-events">
+      <div class="panel-header"><h3>事件列表</h3></div>
+      <div id="event-list"></div>
+    </div>
+  </footer>
+
+  <!-- 导入文件input (隐藏) -->
+  <input type="file" id="file-input" accept=".json" class="hidden">
+
+  <!-- 提示与警告 -->
+  <div id="toast-container"></div>
+
+  <!-- 加载JS模块 -->
+  <script src="js/data-parser.js"></script>
+  <script src="js/layout-engine.js"></script>
+  <script src="js/renderer.js"></script>
+  <script src="js/interaction.js"></script>
+  <script src="js/alarm-player.js"></script>
+  <script src="js/import-export.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
