@@ -302,12 +302,73 @@ const LayoutEngine = (() => {
     }
   }
 
+  /**
+   * diff 模式布局 — 为合并拓扑计算位置
+   */
+  function layoutDiffNodes(diffResult, mergedNodes, mergedLinks, bounds) {
+    if (!mergedNodes || mergedNodes.length === 0) return;
+
+    const existing = mergedNodes.filter(n => n._diffState !== 'added' && n._diffState !== 'removed');
+    const added = mergedNodes.filter(n => n._diffState === 'added');
+    const removed = mergedNodes.filter(n => n._diffState === 'removed');
+
+    // 已有节点：如果有坐标就保持，否则初始化
+    for (const node of existing) {
+      if (node.x == null || node.y == null) {
+        node.x = bounds.width / 2 + (Math.random() - 0.5) * 200;
+        node.y = bounds.height / 2 + (Math.random() - 0.5) * 200;
+      }
+    }
+
+    // 新增节点：放在连接的已有节点附近
+    const adj = buildAdjacency(mergedLinks);
+    for (const node of added) {
+      const neighbors = (adj[node.id] || [])
+        .map(id => mergedNodes.find(n => n.id === id))
+        .filter(n => n && n.x != null && n.y != null);
+
+      if (neighbors.length > 0) {
+        node.x = neighbors.reduce((s, n) => s + n.x, 0) / neighbors.length + (Math.random() - 0.5) * 60;
+        node.y = neighbors.reduce((s, n) => s + n.y, 0) / neighbors.length + (Math.random() - 0.5) * 60;
+      } else {
+        node.x = bounds.width / 2 + (Math.random() - 0.5) * 300;
+        node.y = bounds.height / 2 + (Math.random() - 0.5) * 300;
+      }
+    }
+
+    // 对新增节点做简短力导向 (50 次迭代)
+    if (added.length > 0) {
+      const miniNodes = [...existing, ...added];
+      for (const n of miniNodes) { n._vx = 0; n._vy = 0; n._fx = 0; n._fy = 0; }
+      // 临时固定已有节点
+      const pinnedBackup = existing.map(n => n.pinned);
+      existing.forEach(n => n.pinned = true);
+
+      for (let iter = 0; iter < 50; iter++) {
+        const temperature = 1 - iter / 50;
+        applyForces(miniNodes, mergedLinks, [], adj, temperature, bounds);
+      }
+
+      existing.forEach((n, i) => n.pinned = pinnedBackup[i]);
+    }
+
+    // 删除节点保持 A 中的位置 + 偏移
+    for (const node of removed) {
+      if (node.x == null) node.x = bounds.width / 2 + (Math.random() - 0.5) * 200;
+      if (node.y == null) node.y = bounds.height / 2 + (Math.random() - 0.5) * 200;
+    }
+
+    // 碰撞检测
+    resolveCollisions(mergedNodes);
+  }
+
   function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   return {
     layout,
+    layoutDiffNodes,
     computeGroupBounds,
     resolveCollisions,
     CONFIG,

@@ -18,6 +18,15 @@ const App = (() => {
     onAlertClick: null,
   };
 
+  // 模式管理
+  let _mode = 'single'; // 'single' | 'diff'
+  let _singleModeState = null;
+  let _diffFilters = {
+    diffStates: { added: true, removed: true, changed: true, unchanged: true },
+    linkStatuses: { normal: true, warning: true, critical: true },
+    alarmSeverities: { critical: true, warning: true, info: true }
+  };
+
   /**
    * 应用初始化
    */
@@ -57,6 +66,19 @@ const App = (() => {
       console.log('📋 无保存数据，点击"示例"按钮加载演示数据');
       updateEmptyState();
     }
+
+    // 检查是否有 diff 数据可恢复
+    if (ImportExport.hasDiffData()) {
+      _showDiffRestorePrompt();
+    }
+
+    // 初始化 FaultReplay
+    if (typeof FaultReplay !== 'undefined') {
+      FaultReplay.init();
+    }
+
+    // 绑定 diff 模式事件
+    bindDiffToolbar();
 
     // 启动渲染循环
     startRenderLoop();
@@ -424,10 +446,437 @@ const App = (() => {
     init();
   }
 
+  // ==================== Diff 模式 ====================
+
+  function bindDiffToolbar() {
+    // 进入差异模式
+    const btnEnterDiff = document.getElementById('btn-enter-diff');
+    if (btnEnterDiff) {
+      btnEnterDiff.addEventListener('click', () => {
+        document.getElementById('diff-import-modal').classList.remove('hidden');
+      });
+    }
+
+    // 差异导入确认
+    const btnDiffConfirm = document.getElementById('btn-diff-import-confirm');
+    if (btnDiffConfirm) {
+      btnDiffConfirm.addEventListener('click', _handleDiffImportConfirm);
+    }
+
+    // 差异导入取消
+    const btnDiffCancel = document.getElementById('btn-diff-import-cancel');
+    if (btnDiffCancel) {
+      btnDiffCancel.addEventListener('click', () => {
+        document.getElementById('diff-import-modal').classList.add('hidden');
+      });
+    }
+
+    // 退出差异模式
+    const btnExitDiff = document.getElementById('btn-exit-diff');
+    if (btnExitDiff) {
+      btnExitDiff.addEventListener('click', exitDiffMode);
+    }
+
+    // 导出差异结果
+    const btnExportDiff = document.getElementById('btn-export-diff');
+    if (btnExportDiff) {
+      btnExportDiff.addEventListener('click', () => {
+        if (_mode === 'diff') ImportExport.exportDiffResult();
+      });
+    }
+
+    // 差异筛选
+    document.querySelectorAll('[data-diff-filter]').forEach(cb => {
+      cb.addEventListener('change', () => _applyDiffFilters());
+    });
+
+    // 传播控制
+    const btnPropStep = document.getElementById('btn-prop-step');
+    if (btnPropStep) btnPropStep.addEventListener('click', () => FaultReplay.stepPropagation(TopoDiff.getAlerts()));
+
+    const btnChainStep = document.getElementById('btn-chain-step');
+    if (btnChainStep) btnChainStep.addEventListener('click', () => FaultReplay.stepChain(TopoDiff.getAlerts()));
+
+    const btnRewind = document.getElementById('btn-rewind');
+    if (btnRewind) btnRewind.addEventListener('click', () => FaultReplay.rewind(TopoDiff.getAlerts()));
+
+    // diff 播放/暂停
+    const btnDiffPlay = document.getElementById('btn-diff-play');
+    if (btnDiffPlay) {
+      btnDiffPlay.addEventListener('click', () => {
+        const alerts = TopoDiff.getAlerts();
+        if (FaultReplay.isPlaying()) {
+          FaultReplay.pausePlayback();
+          btnDiffPlay.textContent = '▶';
+        } else {
+          FaultReplay.startPlayback(alerts);
+          btnDiffPlay.textContent = '⏸';
+        }
+      });
+    }
+
+    // diff 速度
+    const diffSpeed = document.getElementById('diff-play-speed');
+    if (diffSpeed) {
+      diffSpeed.addEventListener('change', (e) => {
+        FaultReplay.setSpeed(parseFloat(e.target.value));
+      });
+    }
+
+    // diff 时间线
+    const diffSlider = document.getElementById('diff-timeline-slider');
+    if (diffSlider) {
+      diffSlider.addEventListener('input', () => {
+        const alerts = TopoDiff.getAlerts();
+        if (!alerts || alerts.length === 0) return;
+        const idx = Math.round(parseFloat(diffSlider.value) / 100 * (alerts.length - 1));
+        FaultReplay.jumpToTime(alerts[idx]?.timestamp || 0, alerts);
+      });
+    }
+
+    // 绑定 diff 告警列表
+    Interaction.bindDiffAlarmEvents();
+  }
+
+  async function _handleDiffImportConfirm() {
+    const fileA = document.getElementById('file-snapshot-a').files[0];
+    const fileB = document.getElementById('file-snapshot-b').files[0];
+    const fileAlerts = document.getElementById('file-alerts').files[0];
+
+    if (!fileA || !fileB) {
+      alert('请至少选择两份快照文件');
+      return;
+    }
+
+    const readJSON = (file) => new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => { try { resolve(JSON.parse(e.target.result)); } catch (err) { reject(err); } };
+      reader.readAsText(file);
+    });
+
+    try {
+      const snapshotA = await readJSON(fileA);
+      const snapshotB = await readJSON(fileB);
+      const alerts = fileAlerts ? await readJSON(fileAlerts) : null;
+
+      document.getElementById('diff-import-modal').classList.add('hidden');
+      await loadDiffData(snapshotA, snapshotB, alerts, fileA.name, fileB.name);
+    } catch (err) {
+      alert('导入失败: ' + err.message);
+    }
+  }
+
+  async function loadDiffData(rawA, rawB, rawAlerts, labelA, labelB) {
+    try {
+      // 1. 解析快照
+      const snapshotA = DataParser.parseSnapshot(rawA, labelA || '快照A');
+      const snapshotB = DataParser.parseSnapshot(rawB, labelB || '快照B');
+
+      // 2. 校验兼容性
+      const validation = DataParser.validateSnapshotPair(snapshotA, snapshotB);
+      if (!validation.valid) {
+        alert('快照兼容性校验失败: ' + validation.warnings.map(w => w.text).join('; '));
+        return;
+      }
+      if (validation.warnings.length > 0) {
+        console.warn('快照兼容性警告:', validation.warnings);
+      }
+
+      // 3. 解析告警
+      let alerts = [];
+      if (rawAlerts) {
+        alerts = Array.isArray(rawAlerts) ? DataParser.parseAlertTimeline(rawAlerts) : DataParser.parseAlertTimeline(rawAlerts.alerts || rawAlerts);
+      }
+
+      // 4. 计算差异
+      TopoDiff.computeDiff(snapshotA, snapshotB);
+      TopoDiff.buildMergedTopology();
+      TopoDiff.setAlerts(alerts);
+
+      // 5. 进入 diff 模式
+      enterDiffMode();
+
+      // 6. 布局
+      const bounds = Renderer.getCanvasSize();
+      const mergedNodes = TopoDiff.getMergedNodes();
+      const mergedLinks = TopoDiff.getMergedLinks();
+
+      // 尝试恢复布局
+      if (!ImportExport.restoreDiffLayout(mergedNodes)) {
+        LayoutEngine.layoutDiffNodes(null, mergedNodes, mergedLinks, bounds);
+      }
+
+      // 7. 构建传播图
+      if (alerts.length > 0) {
+        FaultReplay.buildPropagationGraph(alerts, mergedNodes, mergedLinks);
+      }
+
+      // 8. 恢复筛选
+      const savedFilters = ImportExport.loadDiffFilters();
+      if (savedFilters) _restoreDiffFilters(savedFilters);
+
+      // 9. 更新 UI
+      _updateDiffSummary();
+      _updateDiffStatusBar();
+      _populateDiffAlarmList(alerts);
+
+      // 10. 适应画布
+      Renderer.fitToView(mergedNodes);
+
+      // 11. 恢复播放进度
+      const playback = ImportExport.loadDiffPlayback();
+      if (playback && playback.currentTime >= 0 && alerts.length > 0) {
+        FaultReplay.setSpeed(playback.speed || 1);
+      }
+
+      // 12. 保存
+      ImportExport.saveDiffSnapshots(snapshotA, snapshotB, alerts);
+      ImportExport.saveDiffLayout(mergedNodes);
+
+      Interaction.renderAll();
+      console.log(`📊 差异分析完成: +${TopoDiff.getSummary().nodesAdded} -${TopoDiff.getSummary().nodesRemoved} ~${TopoDiff.getSummary().nodesChanged} 节点`);
+    } catch (err) {
+      alert('差异分析失败: ' + err.message);
+      console.error(err);
+    }
+  }
+
+  function enterDiffMode() {
+    // 保存单拓扑状态
+    _singleModeState = {
+      nodes: state.nodes,
+      links: state.links,
+      groups: state.groups,
+      alerts: state.alerts,
+      nodeMap: state.nodeMap,
+      signature: state.signature,
+    };
+
+    _mode = 'diff';
+    Renderer.setDiffMode(true);
+    AlertReplay.setMode('diff');
+
+    // 切换 UI
+    document.getElementById('diff-toolbar').style.display = 'flex';
+    document.getElementById('diff-filter-section').style.display = 'block';
+    document.getElementById('diff-right-panel').style.display = 'flex';
+    document.getElementById('diff-status-bar').style.display = 'flex';
+    document.getElementById('diff-legend').style.display = 'block';
+    document.getElementById('diff-timeline-bar').style.display = 'flex';
+
+    // 隐藏单拓扑控件
+    document.getElementById('single-toolbar').style.display = 'none';
+    document.getElementById('left-panel').style.display = 'none';
+    document.getElementById('right-panel').style.display = 'none';
+    document.getElementById('timeline-bar').style.display = 'none';
+  }
+
+  function exitDiffMode() {
+    // 保存 diff 状态
+    ImportExport.saveDiffLayout(TopoDiff.getMergedNodes());
+    ImportExport.saveDiffFilters(_diffFilters);
+    ImportExport.saveDiffPlayback(FaultReplay.getPlaybackState());
+
+    // 重置 diff 模块
+    FaultReplay.reset();
+    TopoDiff.reset();
+
+    _mode = 'single';
+    Renderer.setDiffMode(false);
+    AlertReplay.setMode('single');
+
+    // 恢复单拓扑状态
+    if (_singleModeState) {
+      state.nodes = _singleModeState.nodes;
+      state.links = _singleModeState.links;
+      state.groups = _singleModeState.groups;
+      state.alerts = _singleModeState.alerts;
+      state.nodeMap = _singleModeState.nodeMap;
+      state.signature = _singleModeState.signature;
+      _singleModeState = null;
+    }
+
+    // 切换 UI
+    document.getElementById('diff-toolbar').style.display = 'none';
+    document.getElementById('diff-filter-section').style.display = 'none';
+    document.getElementById('diff-right-panel').style.display = 'none';
+    document.getElementById('diff-status-bar').style.display = 'none';
+    document.getElementById('diff-legend').style.display = 'none';
+    document.getElementById('diff-timeline-bar').style.display = 'none';
+
+    document.getElementById('single-toolbar').style.display = 'flex';
+    document.getElementById('left-panel').style.display = 'flex';
+    document.getElementById('right-panel').style.display = 'flex';
+    document.getElementById('timeline-bar').style.display = 'flex';
+
+    Interaction.renderAll();
+  }
+
+  function _applyDiffFilters() {
+    // 收集筛选状态
+    document.querySelectorAll('[data-diff-filter]').forEach(cb => {
+      const [group, key] = cb.dataset.diffFilter.split('.');
+      if (group && key && _diffFilters[group]) {
+        _diffFilters[group][key] = cb.checked;
+      }
+    });
+
+    const nodes = TopoDiff.getMergedNodes();
+    const links = TopoDiff.getMergedLinks();
+
+    // 应用差异状态筛选
+    for (const node of nodes) {
+      const ds = node._diffState || 'unchanged';
+      node._visible = _diffFilters.diffStates[ds] !== false;
+      // 节点类型筛选
+      if (node._visible && _diffFilters.nodeTypes) {
+        node._visible = _diffFilters.nodeTypes[node.type] !== false;
+      }
+    }
+
+    // 链路筛选
+    const nodeMap = TopoDiff.getMergedNodeMap();
+    for (const link of links) {
+      const src = nodeMap.get(link.source);
+      const tgt = nodeMap.get(link.target);
+      link._visible = (src?._visible !== false && tgt?._visible !== false);
+      if (link._visible) {
+        const ls = link._diffState || 'unchanged';
+        link._visible = _diffFilters.diffStates[ls] !== false;
+      }
+    }
+
+    ImportExport.saveDiffFilters(_diffFilters);
+    Interaction.renderAll();
+    _updateDiffStatusBar();
+  }
+
+  function _restoreDiffFilters(filters) {
+    _diffFilters = { ..._diffFilters, ...filters };
+    document.querySelectorAll('[data-diff-filter]').forEach(cb => {
+      const key = cb.dataset.diffFilter;
+      if (key) {
+        const [group, subkey] = key.split('.');
+        if (_diffFilters[group] && _diffFilters[group][subkey] !== undefined) {
+          cb.checked = _diffFilters[group][subkey];
+        }
+      }
+    });
+  }
+
+  function _updateDiffSummary() {
+    const summary = TopoDiff.getSummary();
+    if (!summary) return;
+
+    const el = document.getElementById('diff-summary');
+    if (el) {
+      el.innerHTML = `
+        <div class="diff-stat added">🟢 新增节点: ${summary.nodesAdded}</div>
+        <div class="diff-stat removed">🔴 删除节点: ${summary.nodesRemoved}</div>
+        <div class="diff-stat changed">🟡 变更节点: ${summary.nodesChanged}</div>
+        <div class="diff-stat-sep"></div>
+        <div class="diff-stat added">🟢 新增链路: ${summary.linksAdded}</div>
+        <div class="diff-stat removed">🔴 删除链路: ${summary.linksRemoved}</div>
+        <div class="diff-stat changed">🟡 变更链路: ${summary.linksChanged}</div>
+      `;
+    }
+
+    // 更新图例
+    const legend = document.getElementById('diff-legend-content');
+    if (legend) {
+      const chains = FaultReplay.getChains();
+      const rootCause = FaultReplay.getRootCause();
+      legend.innerHTML = `
+        <div class="legend-item"><span class="legend-dot" style="background:#22c55e"></span> 新增</div>
+        <div class="legend-item"><span class="legend-dot" style="background:#ef4444"></span> 删除</div>
+        <div class="legend-item"><span class="legend-dot" style="background:#f59e0b"></span> 变更</div>
+        <div class="legend-item"><span class="legend-dot" style="background:#5a6a7a"></span> 不变</div>
+        ${chains.length > 0 ? `<div class="legend-sep"></div><div class="legend-item">传播链: ${chains.length} 条</div><div class="legend-item">根因: ${rootCause || '-'}</div>` : ''}
+      `;
+    }
+  }
+
+  function _updateDiffStatusBar() {
+    const chains = FaultReplay.getChains();
+    const rootCause = FaultReplay.getRootCause();
+    const playbackState = FaultReplay.getPlaybackState();
+    const allBizNodes = new Set();
+    for (const chain of chains) {
+      for (const biz of chain.affectedBusinessNodes) allBizNodes.add(biz);
+    }
+
+    const elChains = document.getElementById('status-chains');
+    const elRoot = document.getElementById('status-root-cause');
+    const elAffected = document.getElementById('status-affected');
+    const elStep = document.getElementById('status-step');
+
+    if (elChains) elChains.textContent = `传播链: ${chains.length} 条`;
+    if (elRoot) elRoot.textContent = `根因节点: ${rootCause || '-'}`;
+    if (elAffected) elAffected.textContent = `影响业务: ${allBizNodes.size} 个`;
+    if (elStep) elStep.textContent = `当前步: ${playbackState.activeAlertIndex + 1} / ${TopoDiff.getAlerts().length}`;
+  }
+
+  function _populateDiffAlarmList(alerts) {
+    Interaction.updateDiffAlarmList(alerts, -1);
+
+    // 更新 slider
+    const slider = document.getElementById('diff-timeline-slider');
+    if (slider && alerts.length > 0) {
+      slider.min = 0;
+      slider.max = 100;
+      slider.step = 100 / Math.max(alerts.length - 1, 1);
+      slider.value = 0;
+    }
+
+    // 直方图
+    DiffRenderer.renderTimelineHistogram(alerts, -1);
+
+    // 时间显示
+    if (alerts.length > 0) {
+      const timeEl = document.getElementById('diff-timeline-time');
+      if (timeEl) {
+        timeEl.textContent = `${new Date(alerts[0].timestamp).toLocaleTimeString()} — ${new Date(alerts[alerts.length-1].timestamp).toLocaleTimeString()}`;
+      }
+    }
+  }
+
+  function _showDiffRestorePrompt() {
+    const toast = document.createElement('div');
+    toast.innerHTML = `
+      <div style="margin-bottom:8px;">检测到上次差异分析数据，是否恢复？</div>
+      <button id="btn-restore-diff" style="margin-right:8px;">恢复差异模式</button>
+      <button id="btn-clear-diff">清除</button>
+    `;
+    toast.style.cssText = `
+      position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+      padding: 12px 20px; background: var(--bg-tertiary); color: var(--text-primary);
+      border: 1px solid var(--border-color); border-radius: 8px;
+      font-size: 13px; z-index: 999; box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    `;
+    document.body.appendChild(toast);
+
+    document.getElementById('btn-restore-diff').addEventListener('click', async () => {
+      toast.remove();
+      const data = ImportExport.loadDiffSnapshots();
+      if (data) {
+        await loadDiffData(data.snapshotA, data.snapshotB, data.alerts);
+      }
+    });
+
+    document.getElementById('btn-clear-diff').addEventListener('click', () => {
+      toast.remove();
+      ImportExport.clearDiffStorage();
+    });
+  }
+
   return {
     init,
     state,
     loadData,
+    loadDiffData,
     getSampleData,
+    enterDiffMode,
+    exitDiffMode,
+    getMode: () => _mode,
   };
 })();

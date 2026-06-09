@@ -1,0 +1,85 @@
+[
+  {
+    "id": "alert-001",
+    "timestamp": "2026-06-09T10:00:00Z",
+    "nodeId": "sw-1",
+    "severity": "warning",
+    "message": "核心交换机 CPU 使用率达到 85%",
+    "type": "performance"
+  },
+  {
+    "id": "alert-002",
+    "timestamp": "2026-06-09T10:01:00Z",
+    "nodeId": "sw-1",
+    "severity": "critical",
+    "message": "核心交换机 CPU 过载，超过 95%",
+    "type": "fault",
+    "affectedNodes": ["srv-1", "srv-2"]
+  },
+  {
+    "id": "alert-003",
+    "timestamp": "2026-06-09T10:01:30Z",
+    "nodeId": "srv-1",
+    "severity": "warning",
+    "message": "Web 服务器连接超时",
+    "type": "connectivity"
+  },
+  {
+    "id": "alert-004",
+    "timestamp": "2026-06-09T10:02:00Z",
+    "nodeId": "srv-2",
+    "severity": "warning",
+    "message": "API 服务器响应延迟 > 5s",
+    "type": "performance"
+  },
+  {
+    "id": "alert-005",
+    "timestamp": "2026-06-09T10:02:30Z",
+    "nodeId": "db-1",
+    "severity": "critical",
+    "message": "主数据库连接数耗尽",
+    "type": "capacity",
+    "affectedNodes": ["srv-2"]
+  },
+  {
+    "id": "alert-006",
+    "timestamp": "2026-06-09T10:03:00Z",
+    "nodeId": "gw-1",
+    "severity": "warning",
+    "message": "API 网关流量切换到备用路径",
+    "type": "failover"
+  },
+  {
+    "id": "alert-007",
+    "timestamp": "2026-06-09T10:04:00Z",
+    "nodeId": "app-1",
+    "severity": "critical",
+    "message": "前端应用服务不可用",
+    "type": "service",
+    "affectedNodes": ["gw-1"]
+  },
+  {
+    "id": "alert-008",
+    "timestamp": "2026-06-09T10:06:00Z",
+    "nodeId": "sw-1",
+    "severity": "warning",
+    "message": "核心交换机触发自动重启",
+    "type": "recovery"
+  },
+  {
+    "id": "alert-009",
+    "timestamp": "2026-06-09T10:08:00Z",
+    "nodeId": "sw-1",
+    "severity": "normal",
+    "message": "核心交换机重启成功，CPU 恢复正常",
+    "type": "recovery"
+  },
+  {
+    "id": "alert-010",
+    "timestamp": "2026-06-09T10:09:00Z",
+    "nodeId": "app-1",
+    "severity": "normal",
+    "message": "前端应用恢复服务",
+    "type": "recovery"
+  }
+]

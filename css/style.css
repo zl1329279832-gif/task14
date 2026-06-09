@@ -840,6 +840,250 @@ html, body {
   to { transform: rotate(360deg); }
 }
 
+/* ===== Diff Mode Styles ===== */
+
+/* Diff panels */
+.diff-panel {
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border-color);
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.diff-left-panel {
+  width: var(--panel-width);
+  display: flex;
+  flex-direction: column;
+}
+
+.diff-right-panel {
+  width: 280px;
+  display: flex;
+  flex-direction: column;
+  border-right: none;
+  border-left: 1px solid var(--border-color);
+}
+
+/* Diff filter checkboxes */
+.diff-filter-added input:checked + span,
+.diff-filter-added:has(input:checked) { color: #22c55e; }
+.diff-filter-removed input:checked + span,
+.diff-filter-removed:has(input:checked) { color: #ef4444; }
+.diff-filter-changed input:checked + span,
+.diff-filter-changed:has(input:checked) { color: #f59e0b; }
+
+/* Diff summary */
+.diff-summary {
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.diff-stat { padding: 2px 0; }
+.diff-stat.added { color: #22c55e; }
+.diff-stat.removed { color: #ef4444; }
+.diff-stat.changed { color: #f59e0b; }
+.diff-stat-sep { border-top: 1px solid var(--border-color); margin: 4px 0; }
+
+/* Diff alarm list */
+.diff-alarm-list {
+  flex: 1;
+  overflow-y: auto;
+  max-height: 400px;
+}
+
+.diff-alarm-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-color);
+  cursor: pointer;
+  font-size: 11px;
+  transition: background 0.15s;
+}
+
+.diff-alarm-item:hover {
+  background: var(--bg-tertiary);
+}
+
+.diff-alarm-item.active {
+  background: rgba(74, 158, 255, 0.15);
+  border-left: 3px solid #4a9eff;
+}
+
+.diff-alarm-item.in-chain {
+  border-left: 2px solid #ef4444;
+}
+
+.alarm-icon { font-size: 14px; flex-shrink: 0; }
+
+.alarm-info { flex: 1; min-width: 0; }
+
+.alarm-time {
+  color: var(--text-muted);
+  font-size: 10px;
+  margin-bottom: 2px;
+}
+
+.alarm-msg {
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.alarm-node {
+  color: var(--text-secondary);
+  font-size: 10px;
+  margin-top: 2px;
+}
+
+/* Propagation controls */
+.prop-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px 0;
+}
+
+.prop-controls button {
+  padding: 4px 8px;
+  font-size: 11px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.prop-controls button:hover {
+  background: var(--bg-primary);
+}
+
+.prop-controls select {
+  padding: 3px 6px;
+  font-size: 11px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+}
+
+/* Diff timeline bar */
+.diff-timeline-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 16px;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-color);
+  height: 50px;
+}
+
+.diff-timeline-bar .timeline-track {
+  position: relative;
+  flex: 1;
+}
+
+.diff-timeline-bar canvas {
+  width: 100%;
+  height: 30px;
+  border-radius: 4px;
+}
+
+.diff-timeline-bar input[type="range"] {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 30px;
+  opacity: 0.3;
+  cursor: pointer;
+}
+
+/* Diff status bar */
+.diff-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 16px;
+  background: var(--bg-tertiary);
+  border-top: 1px solid var(--border-color);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.diff-status-bar .status-sep {
+  color: var(--border-color);
+}
+
+/* Diff legend */
+.diff-legend {
+  position: absolute;
+  top: 80px;
+  right: 320px;
+  background: rgba(15, 25, 35, 0.9);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 11px;
+  z-index: 50;
+  min-width: 120px;
+}
+
+.diff-legend .legend-title {
+  font-weight: bold;
+  margin-bottom: 6px;
+  color: var(--text-primary);
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  color: var(--text-secondary);
+}
+
+.legend-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.legend-sep {
+  border-top: 1px solid var(--border-color);
+  margin: 4px 0;
+}
+
+/* Diff import modal */
+.diff-import-form {
+  margin: 12px 0;
+}
+
+.diff-import-form .file-input-group {
+  margin-bottom: 12px;
+}
+
+.diff-import-form .file-input-group label {
+  display: block;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.diff-import-form .file-input-group input[type="file"] {
+  width: 100%;
+  padding: 6px;
+  font-size: 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-primary);
+}
+
 /* ===== Responsive ===== */
 @media (max-width: 1200px) {
   :root { --panel-width: 220px; }

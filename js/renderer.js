@@ -94,10 +94,18 @@ const Renderer = (() => {
     };
   }
 
+  // diff 模式标志
+  let _diffMode = false;
+  let _renderRequested = false;
+
   /**
-   * 主渲染循环
+   * 主渲染循环 — diff 模式委托给 DiffRenderer
    */
   function render(state) {
+    if (_diffMode && typeof DiffRenderer !== 'undefined') {
+      DiffRenderer.render();
+      return;
+    }
     if (!state) return;
     const { nodes, links, groups, selectedNodes } = state;
     const size = getCanvasSize();
@@ -668,6 +676,34 @@ const Renderer = (() => {
     return Math.max(min, Math.min(max, val));
   }
 
+  /**
+   * 设置/获取 diff 模式
+   */
+  function setDiffMode(enabled) {
+    _diffMode = enabled;
+  }
+
+  function isDiffMode() {
+    return _diffMode;
+  }
+
+  /**
+   * 请求渲染（防重复）
+   */
+  function requestRender() {
+    if (!_renderRequested) {
+      _renderRequested = true;
+      requestAnimationFrame(() => {
+        _renderRequested = false;
+      });
+    }
+  }
+
+  function getMainContext() { return mainCtx; }
+  function getOverlayContext() { return overlayCtx; }
+  function getMinimapContext() { return minimapCtx; }
+  function getMainCanvas() { return mainCanvas; }
+
   return {
     init,
     resize,
@@ -681,5 +717,12 @@ const Renderer = (() => {
     viewport,
     getCanvasSize,
     NODE_RADIUS,
+    setDiffMode,
+    isDiffMode,
+    requestRender,
+    getMainContext,
+    getOverlayContext,
+    getMinimapContext,
+    getMainCanvas,
   };
 })();

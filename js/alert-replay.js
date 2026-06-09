@@ -12,6 +12,10 @@ const AlertReplay = (() => {
   let playTimer = null;
   let slider = null;
 
+  // diff 模式标志和回调
+  let _mode = 'single'; // 'single' | 'diff'
+  let onDiffAlertFired = null;
+
   // 追踪告警系统设置的高亮节点（避免清除搜索高亮）
   let alertHighlightedNodes = new Set();
   let alertHighlightedLinks = new Set();
@@ -154,6 +158,11 @@ const AlertReplay = (() => {
 
     updateProgress();
     Interaction.renderAll();
+
+    // diff 模式回调
+    if (_mode === 'diff' && onDiffAlertFired) {
+      onDiffAlertFired(alert);
+    }
   }
 
   /**
@@ -403,6 +412,22 @@ const AlertReplay = (() => {
   }
 
   /**
+   * 设置模式
+   */
+  function setMode(mode) {
+    _mode = mode;
+  }
+
+  function getMode() { return _mode; }
+
+  /**
+   * 快速跳转到指定索引（无动画，用于 diff scrubber）
+   */
+  function jumpToIndex(index) {
+    seekTo(index);
+  }
+
+  /**
    * 获取当前回放状态
    */
   function getState() {
@@ -420,10 +445,15 @@ const AlertReplay = (() => {
     play,
     pause,
     seekTo,
+    jumpToIndex,
     stepBack,
     stepForward,
     clearAllAlerts,
     saveOriginalStatus,
     getState,
+    setMode,
+    getMode,
+    get onDiffAlertFired() { return onDiffAlertFired; },
+    set onDiffAlertFired(fn) { onDiffAlertFired = fn; },
   };
 })();

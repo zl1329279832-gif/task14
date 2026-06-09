@@ -314,6 +314,138 @@ const ImportExport = (() => {
     return div.innerHTML;
   }
 
+  // --- Diff 模式相关 ---
+
+  const DIFF_SNAPSHOT_A_KEY = 'topo-diff-snapshotA';
+  const DIFF_SNAPSHOT_B_KEY = 'topo-diff-snapshotB';
+  const DIFF_ALERTS_KEY = 'topo-diff-alerts';
+  const DIFF_LAYOUT_KEY = 'topo-diff-layout';
+  const DIFF_FILTERS_KEY = 'topo-diff-filters';
+  const DIFF_PLAYBACK_KEY = 'topo-diff-playback';
+
+  function importDiffFiles() {
+    return new Promise((resolve, reject) => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.json';
+      input.multiple = true;
+      input.onchange = async (e) => {
+        const files = Array.from(e.target.files);
+        if (files.length < 2) { reject(new Error('至少需要选择两份快照文件')); return; }
+        try {
+          const readJSON = (file) => new Promise((res, rej) => {
+            const reader = new FileReader();
+            reader.onload = (ev) => { try { res(JSON.parse(ev.target.result)); } catch (err) { rej(new Error(`文件 ${file.name} 解析失败`)); } };
+            reader.readAsText(file);
+          });
+          const results = await Promise.all(files.map(f => readJSON(f)));
+          if (results[0].exportType === 'topology-diff-analysis') {
+            resolve({ type: 'full-package', data: results[0] });
+          } else {
+            resolve({ type: 'separate', snapshotA: results[0], snapshotB: results[1], alerts: results[2] || null });
+          }
+        } catch (err) { reject(err); }
+      };
+      input.click();
+    });
+  }
+
+  function importDiffFullPackage(jsonData) {
+    const data = typeof jsonData === 'string' ? JSON.parse(jsonData) : jsonData;
+    return {
+      snapshotA: data.snapshots?.A || {},
+      snapshotB: data.snapshots?.B || {},
+      alerts: data.alerts || [],
+      filterState: data.userAnnotations?.filterState || null,
+    };
+  }
+
+  function exportDiffResult() {
+    const diffResult = TopoDiff.getSerializableResult();
+    const snapshotA = TopoDiff.getSnapshotA();
+    const snapshotB = TopoDiff.getSnapshotB();
+    const alerts = TopoDiff.getAlerts();
+    const propagation = FaultReplay.getSerializableGraph();
+    const pkg = {
+      exportType: 'topology-diff-analysis', version: '1.0', exportedAt: new Date().toISOString(),
+      snapshots: {
+        A: { label: snapshotA?.label || '快照A', nodes: (snapshotA?.nodes || []), links: (snapshotA?.links || []) },
+        B: { label: snapshotB?.label || '快照B', nodes: (snapshotB?.nodes || []), links: (snapshotB?.links || []) }
+      },
+      alerts: (alerts || []).map(a => ({ id: a.id, timestamp: a.timestamp, nodeId: a.nodeId, type: a.type, severity: a.severity, message: a.message })),
+      diffResult, propagationAnalysis: propagation,
+      userAnnotations: { pinnedNodePositions: Interaction.getPinnedPositions(), filterState: _getDiffFilters() }
+    };
+    const blob = new Blob([JSON.stringify(pkg, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `topo-diff-${Date.now()}.json`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function saveDiffSnapshots(snapshotA, snapshotB, alerts) {
+    try {
+      localStorage.setItem(DIFF_SNAPSHOT_A_KEY, JSON.stringify(snapshotA));
+      localStorage.setItem(DIFF_SNAPSHOT_B_KEY, JSON.stringify(snapshotB));
+      if (alerts?.length > 0) localStorage.setItem(DIFF_ALERTS_KEY, JSON.stringify(alerts));
+    } catch (e) { console.warn('保存差异快照失败:', e); }
+  }
+
+  function loadDiffSnapshots() {
+    try {
+      const a = localStorage.getItem(DIFF_SNAPSHOT_A_KEY);
+      const b = localStorage.getItem(DIFF_SNAPSHOT_B_KEY);
+      const alerts = localStorage.getItem(DIFF_ALERTS_KEY);
+      if (a && b) return { snapshotA: JSON.parse(a), snapshotB: JSON.parse(b), alerts: alerts ? JSON.parse(alerts) : [] };
+    } catch (e) {}
+    return null;
+  }
+
+  function saveDiffLayout(mergedNodes) {
+    try {
+      const positions = {};
+      for (const n of mergedNodes) { if (n.x != null) positions[n.id] = { x: Math.round(n.x), y: Math.round(n.y), pinned: n.pinned }; }
+      localStorage.setItem(DIFF_LAYOUT_KEY, JSON.stringify({ positions, viewport: { x: Renderer.viewport.x, y: Renderer.viewport.y, scale: Renderer.viewport.scale } }));
+    } catch (e) {}
+  }
+
+  function restoreDiffLayout(mergedNodes) {
+    try {
+      const raw = localStorage.getItem(DIFF_LAYOUT_KEY);
+      if (!raw) return false;
+      const data = JSON.parse(raw);
+      for (const node of mergedNodes) {
+        const saved = data.positions?.[node.id];
+        if (saved) { node.x = saved.x; node.y = saved.y; node.pinned = saved.pinned || false; }
+      }
+      if (data.viewport) { Renderer.viewport.x = data.viewport.x; Renderer.viewport.y = data.viewport.y; Renderer.viewport.scale = data.viewport.scale; }
+      return true;
+    } catch (e) { return false; }
+  }
+
+  function saveDiffFilters(filters) { try { localStorage.setItem(DIFF_FILTERS_KEY, JSON.stringify(filters)); } catch(e) {} }
+  function loadDiffFilters() { try { const r = localStorage.getItem(DIFF_FILTERS_KEY); return r ? JSON.parse(r) : null; } catch(e) { return null; } }
+  function saveDiffPlayback(state) { try { localStorage.setItem(DIFF_PLAYBACK_KEY, JSON.stringify({ currentTime: state.activeAlertIndex, speed: state.speed })); } catch(e) {} }
+  function loadDiffPlayback() { try { const r = localStorage.getItem(DIFF_PLAYBACK_KEY); return r ? JSON.parse(r) : null; } catch(e) { return null; } }
+
+  function clearDiffStorage() {
+    [DIFF_SNAPSHOT_A_KEY, DIFF_SNAPSHOT_B_KEY, DIFF_ALERTS_KEY, DIFF_LAYOUT_KEY, DIFF_FILTERS_KEY, DIFF_PLAYBACK_KEY]
+      .forEach(k => localStorage.removeItem(k));
+  }
+
+  function hasDiffData() { return !!localStorage.getItem(DIFF_SNAPSHOT_A_KEY); }
+
+  function _getDiffFilters() {
+    const filters = {};
+    document.querySelectorAll('[data-diff-filter]').forEach(cb => {
+      const key = cb.dataset.diffFilter;
+      if (key) filters[key] = cb.checked;
+    });
+    return filters;
+  }
+
   return {
     importFile,
     exportData,
@@ -325,5 +457,19 @@ const ImportExport = (() => {
     showValidationDialog,
     STORAGE_KEY,
     LAYOUT_KEY,
+    // Diff 模式
+    importDiffFiles,
+    importDiffFullPackage,
+    exportDiffResult,
+    saveDiffSnapshots,
+    loadDiffSnapshots,
+    saveDiffLayout,
+    restoreDiffLayout,
+    saveDiffFilters,
+    loadDiffFilters,
+    saveDiffPlayback,
+    loadDiffPlayback,
+    clearDiffStorage,
+    hasDiffData,
   };
 })();

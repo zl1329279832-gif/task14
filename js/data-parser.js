@@ -420,10 +420,123 @@ const DataParser = (() => {
     return paths;
   }
 
+  /**
+   * 解析单个拓扑快照（用于差异对比）
+   */
+  function parseSnapshot(jsonStr, label) {
+    const data = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr;
+    if (!data || !Array.isArray(data.nodes)) {
+      throw new Error('快照格式无效：缺少 nodes 数组');
+    }
+
+    const nodes = [];
+    const nodeMap = new Map();
+    const idSet = new Set();
+
+    for (const raw of data.nodes) {
+      if (!raw.id) continue;
+      const id = String(raw.id);
+      if (idSet.has(id)) continue;
+      idSet.add(id);
+
+      const node = {
+        id,
+        type: NODE_TYPES[raw.type] ? raw.type : 'server',
+        label: raw.label || raw.name || id,
+        group: raw.group || null,
+        status: STATUS_TYPES[raw.status] ? raw.status : 'normal',
+        x: typeof raw.x === 'number' ? raw.x : null,
+        y: typeof raw.y === 'number' ? raw.y : null,
+        pinned: !!raw.pinned,
+        metadata: raw.metadata || {},
+      };
+      nodes.push(node);
+      nodeMap.set(id, node);
+    }
+
+    const links = [];
+    const linkSet = new Set();
+    for (const raw of (data.links || [])) {
+      const src = String(raw.source || raw.from || '');
+      const tgt = String(raw.target || raw.to || '');
+      if (!src || !tgt || !nodeMap.has(src) || !nodeMap.has(tgt)) continue;
+      const key = `${src}->${tgt}`;
+      const revKey = `${tgt}->${src}`;
+      if (linkSet.has(key) || linkSet.has(revKey)) continue;
+      linkSet.add(key);
+      links.push({
+        id: raw.id || `${src}_${tgt}`,
+        source: src,
+        target: tgt,
+        status: STATUS_TYPES[raw.status] ? raw.status : 'normal',
+        label: raw.label || '',
+        metadata: raw.metadata || {},
+      });
+    }
+
+    return {
+      nodes,
+      links,
+      nodeMap,
+      label: label || '快照',
+      signature: computeTopologySignature(nodes, links),
+    };
+  }
+
+  /**
+   * 解析告警时间线（独立文件）
+   */
+  function parseAlertTimeline(jsonStr) {
+    const data = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr;
+    const alerts = Array.isArray(data) ? data : (data.alerts || []);
+
+    return alerts
+      .filter(a => a && a.timestamp != null)
+      .map((a, i) => ({
+        id: a.id || `alert_${i}`,
+        timestamp: new Date(a.timestamp).getTime() || Date.now(),
+        nodeId: a.nodeId ? String(a.nodeId) : null,
+        linkId: a.linkId || null,
+        type: a.type || 'fault',
+        severity: a.severity || 'warning',
+        message: a.message || '未知告警',
+        affectedNodes: (a.affectedNodes || []).map(String),
+        _raw: a,
+      }))
+      .sort((a, b) => a.timestamp - b.timestamp || a.id.localeCompare(b.id));
+  }
+
+  /**
+   * 校验两份快照兼容性
+   */
+  function validateSnapshotPair(snapshotA, snapshotB) {
+    const warnings = [];
+    if (!snapshotA.nodes || snapshotA.nodes.length === 0) {
+      warnings.push({ level: 'error', text: '快照A没有节点数据' });
+    }
+    if (!snapshotB.nodes || snapshotB.nodes.length === 0) {
+      warnings.push({ level: 'error', text: '快照B没有节点数据' });
+    }
+
+    const idsA = new Set(snapshotA.nodes.map(n => n.id));
+    const idsB = new Set(snapshotB.nodes.map(n => n.id));
+    const overlap = [...idsA].filter(id => idsB.has(id)).length;
+    const total = Math.max(idsA.size, idsB.size);
+    if (total > 0 && overlap / total < 0.3) {
+      warnings.push({ level: 'warn', text: `两份快照节点重合率仅 ${(overlap / total * 100).toFixed(1)}%，可能不是同一拓扑` });
+    }
+
+    const valid = !warnings.some(w => w.level === 'error');
+    return { valid, warnings };
+  }
+
   return {
     NODE_TYPES,
     STATUS_TYPES,
     parse,
+    parseSnapshot,
+    parseAlertTimeline,
+    validateSnapshotPair,
     detectCycles,
     traceUpstream,
     traceDownstream,

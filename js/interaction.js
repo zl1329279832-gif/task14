@@ -78,6 +78,12 @@ const Interaction = (() => {
     // 右键不处理（由contextmenu处理）
     if (e.button === 2) return;
 
+    // diff 模式特殊处理
+    if (Renderer.isDiffMode()) {
+      _handleDiffMouseDown(e, pos, worldPos);
+      return;
+    }
+
     // 中键平移
     if (e.button === 1) {
       e.preventDefault();
@@ -942,6 +948,169 @@ const Interaction = (() => {
     document.getElementById('impact-panel').classList.add('hidden');
   }
 
+  /**
+   * diff 模式鼠标处理
+   */
+  function _handleDiffMouseDown(e, pos, worldPos) {
+    const nodes = TopoDiff.getMergedNodes();
+    const hitNode = Renderer.hitTest(worldPos.x, worldPos.y, nodes);
+
+    if (hitNode) {
+      if (hitNode._diffState === 'removed') return; // ghost 不可拖拽
+
+      // 拖拽
+      if (!e.shiftKey) {
+        clearSelection();
+        selectNode(hitNode);
+      }
+      startDrag(hitNode, worldPos, pos);
+
+      // 检查传播链
+      const chains = FaultReplay.getChainsForNode(hitNode.id);
+      if (chains.length > 0) {
+        FaultReplay.highlightChain(chains[0].chainId);
+        const chain = chains[0];
+        for (const bizId of chain.affectedBusinessNodes) {
+          const node = TopoDiff.getMergedNodeMap().get(bizId);
+          if (node) node._highlighted = true;
+        }
+        // 高亮上游
+        FaultReplay.highlightUpstreamFrom(hitNode.id, TopoDiff.getMergedLinks(), TopoDiff.getMergedNodeMap());
+      }
+
+      // 显示差异 tooltip
+      _showDiffTooltip(hitNode);
+      renderAll();
+    } else {
+      if (!e.shiftKey) clearSelection();
+      if (spacePressed || e.altKey || e.button === 1) {
+        startPan(pos);
+      }
+    }
+  }
+
+  /**
+   * 显示差异 tooltip
+   */
+  function _showDiffTooltip(node) {
+    const panel = document.getElementById('detail-panel');
+    const content = document.getElementById('detail-content');
+    const typeInfo = DataParser.NODE_TYPES[node.type];
+
+    let diffHtml = '';
+    const diffResult = TopoDiff.getDiffResult();
+    if (diffResult) {
+      const changeInfo = diffResult.nodesChanged.find(c => c.id === node.id);
+      if (changeInfo) {
+        diffHtml = '<div style="margin-top:8px;"><strong style="font-size:11px;color:#f59e0b">变更详情</strong>';
+        for (const change of changeInfo.changes) {
+          diffHtml += `<div class="detail-row"><span class="detail-label">${escapeHtml(change.field)}</span><span class="detail-value" style="color:#ef4444">${escapeHtml(String(change.from || '-'))}</span> → <span class="detail-value" style="color:#22c55e">${escapeHtml(String(change.to || '-'))}</span></div>`;
+        }
+        diffHtml += '</div>';
+      }
+    }
+
+    // 传播链信息
+    const chains = FaultReplay.getChainsForNode(node.id);
+    let chainHtml = '';
+    if (chains.length > 0) {
+      chainHtml = '<div style="margin-top:8px;"><strong style="font-size:11px;color:#ef4444">传播链</strong>';
+      for (const chain of chains) {
+        const step = chain.steps.find(s => s.nodeId === node.id);
+        chainHtml += `<div class="detail-row"><span class="detail-label">链</span><span class="detail-value">${escapeHtml(chain.chainId)} (步骤 #${step ? step.order : '?'})</span></div>`;
+      }
+      chainHtml += '</div>';
+    }
+
+    const diffStateLabels = { added: '🟢 新增', removed: '🔴 已删除', changed: '🟡 已变更', unchanged: '⚪ 不变' };
+
+    content.innerHTML = `
+      <div class="detail-row"><span class="detail-label">ID</span><span class="detail-value">${escapeHtml(node.id)}</span></div>
+      <div class="detail-row"><span class="detail-label">名称</span><span class="detail-value">${escapeHtml(node.label)}</span></div>
+      <div class="detail-row"><span class="detail-label">类型</span><span class="detail-value">${typeInfo?.icon || ''} ${typeInfo?.label || node.type}</span></div>
+      <div class="detail-row"><span class="detail-label">状态</span><span class="detail-value">${node.status}</span></div>
+      <div class="detail-row"><span class="detail-label">差异</span><span class="detail-value">${diffStateLabels[node._diffState] || node._diffState}</span></div>
+      ${diffHtml}
+      ${chainHtml}
+    `;
+    panel.classList.remove('hidden');
+  }
+
+  /**
+   * 绑定 diff 告警列表事件
+   */
+  function bindDiffAlarmEvents() {
+    const list = document.getElementById('diff-alarm-list');
+    if (!list) return;
+
+    list.addEventListener('click', (e) => {
+      const item = e.target.closest('.diff-alarm-item');
+      if (!item) return;
+      const alertId = item.dataset.alertId;
+      const alerts = TopoDiff.getAlerts();
+      const alert = alerts.find(a => a.id === alertId);
+      if (!alert) return;
+
+      // 跳转到该告警
+      FaultReplay.jumpToAlert(alert, alerts);
+
+      // 高亮链
+      const chain = FaultReplay.getChainForAlert(alertId);
+      if (chain) {
+        const step = chain.steps.find(s => s.alertId === alertId);
+        FaultReplay.highlightChainUpTo(chain.chainId, step ? step.order : 0);
+        FaultReplay.highlightAffectedBusiness(chain);
+        // 高亮上游依赖
+        if (alert.nodeId) {
+          FaultReplay.highlightUpstreamFrom(alert.nodeId, TopoDiff.getMergedLinks(), TopoDiff.getMergedNodeMap());
+        }
+      }
+
+      renderAll();
+    });
+  }
+
+  /**
+   * 更新 diff 告警列表
+   */
+  function updateDiffAlarmList(alerts, currentIndex) {
+    const list = document.getElementById('diff-alarm-list');
+    if (!list) return;
+
+    const severityIcons = { critical: '🔴', warning: '🟠', info: '🟡', normal: '🟢' };
+
+    list.innerHTML = alerts.map((alert, i) => {
+      const time = new Date(alert.timestamp).toLocaleTimeString();
+      const icon = severityIcons[alert.severity] || '⚪';
+      const chain = FaultReplay.getChainForAlert(alert.id);
+      return `<div class="diff-alarm-item ${i === currentIndex ? 'active' : ''} ${chain ? 'in-chain' : ''}" data-alert-id="${escapeHtml(alert.id)}">
+        <span class="alarm-icon">${icon}</span>
+        <div class="alarm-info">
+          <div class="alarm-time">${time}</div>
+          <div class="alarm-msg">${escapeHtml(alert.message)}</div>
+          ${alert.nodeId ? `<div class="alarm-node">📍 ${escapeHtml(alert.nodeId)}</div>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+
+    // 滚动到当前
+    const active = list.querySelector('.diff-alarm-item.active');
+    if (active) active.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  /**
+   * 获取固定节点位置
+   */
+  function getPinnedPositions() {
+    const positions = {};
+    for (const n of appState.nodes) {
+      if (n.pinned) {
+        positions[n.id] = { x: Math.round(n.x), y: Math.round(n.y) };
+      }
+    }
+    return positions;
+  }
+
   function renderAll() {
     Renderer.render(appState);
   }
@@ -971,5 +1140,9 @@ const Interaction = (() => {
     updateEventList,
     renderAll,
     getSelectedNodes: () => selectedNodes,
+    bindDiffAlarmEvents,
+    updateDiffAlarmList,
+    getPinnedPositions,
+    _showDiffTooltip,
   };
 })();

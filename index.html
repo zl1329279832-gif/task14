@@ -9,12 +9,14 @@
 <body>
   <!-- 顶部工具栏 -->
   <header id="toolbar">
-    <div class="toolbar-left">
+    <!-- 单拓扑模式工具栏 -->
+    <div id="single-toolbar" class="toolbar-left" style="display:flex">
       <h1 class="logo">&#x2B21; 拓扑可视化</h1>
       <div class="toolbar-group">
         <button id="btn-import" title="导入拓扑数据 (Ctrl+I)">&#x1F4C2; 导入</button>
         <button id="btn-export" title="导出拓扑数据 (Ctrl+E)">&#x1F4BE; 导出</button>
         <button id="btn-sample" title="加载示例数据">&#x1F4CB; 示例</button>
+        <button id="btn-enter-diff" title="进入差异对比模式">&#x1F50D; 差异对比</button>
       </div>
       <div class="toolbar-separator"></div>
       <div class="toolbar-group">
@@ -28,6 +30,20 @@
         <button id="btn-expand-all" title="展开所有分组">&#x1F4C2; 展开</button>
       </div>
     </div>
+
+    <!-- Diff 模式工具栏 -->
+    <div id="diff-toolbar" class="toolbar-left" style="display:none">
+      <h1 class="logo">&#x1F50D; 差异对比</h1>
+      <div class="toolbar-group">
+        <button id="btn-exit-diff" title="返回单拓扑模式">&#x2190; 返回</button>
+        <button id="btn-export-diff" title="导出差异结果 JSON">&#x1F4BE; 导出差异</button>
+      </div>
+      <div class="toolbar-separator"></div>
+      <div class="toolbar-group" id="diff-snapshot-info" style="font-size:12px;color:var(--text-secondary)">
+        已加载差异数据
+      </div>
+    </div>
+
     <div class="toolbar-right">
       <div class="search-box">
         <input type="text" id="search-input" placeholder="搜索节点 (Ctrl+F)..." autocomplete="off">
@@ -66,6 +82,39 @@
       <div class="panel-section">
         <h3>&#x1F4CB; 分组列表</h3>
         <div id="group-list" class="group-list"></div>
+      </div>
+    </aside>
+
+    <!-- Diff 模式左侧筛选面板 -->
+    <aside id="diff-filter-section" class="diff-panel diff-left-panel" style="display:none">
+      <div class="panel-section">
+        <h3>&#x1F4CA; 差异概览</h3>
+        <div id="diff-summary" class="diff-summary"></div>
+      </div>
+      <div class="panel-section">
+        <h3>&#x1F3F7;&#xFE0F; 差异状态筛选</h3>
+        <div class="filter-list">
+          <label class="filter-item diff-filter-added"><input type="checkbox" data-diff-filter="diffStates.added" checked> &#x1F7E2; 新增</label>
+          <label class="filter-item diff-filter-removed"><input type="checkbox" data-diff-filter="diffStates.removed" checked> &#x1F534; 删除</label>
+          <label class="filter-item diff-filter-changed"><input type="checkbox" data-diff-filter="diffStates.changed" checked> &#x1F7E1; 变更</label>
+          <label class="filter-item"><input type="checkbox" data-diff-filter="diffStates.unchanged" checked> &#x26AA; 不变</label>
+        </div>
+      </div>
+      <div class="panel-section">
+        <h3>&#x1F517; 链路状态</h3>
+        <div class="filter-list">
+          <label class="filter-item"><input type="checkbox" data-diff-filter="linkStatuses.normal" checked> 正常</label>
+          <label class="filter-item"><input type="checkbox" data-diff-filter="linkStatuses.warning" checked> 告警</label>
+          <label class="filter-item"><input type="checkbox" data-diff-filter="linkStatuses.critical" checked> 严重</label>
+        </div>
+      </div>
+      <div class="panel-section">
+        <h3>&#x1F6A8; 告警级别</h3>
+        <div class="filter-list">
+          <label class="filter-item"><input type="checkbox" data-diff-filter="alarmSeverities.critical" checked> &#x1F534; 严重</label>
+          <label class="filter-item"><input type="checkbox" data-diff-filter="alarmSeverities.warning" checked> &#x1F7E0; 警告</label>
+          <label class="filter-item"><input type="checkbox" data-diff-filter="alarmSeverities.info" checked> &#x1F7E1; 提示</label>
+        </div>
       </div>
     </aside>
 
@@ -119,9 +168,33 @@
         <div id="impact-content"></div>
       </div>
     </aside>
+
+    <!-- Diff 模式右侧面板 -->
+    <aside id="diff-right-panel" class="diff-panel diff-right-panel" style="display:none">
+      <div class="panel-section">
+        <h3>&#x23F1;&#xFE0F; 传播控制</h3>
+        <div class="prop-controls">
+          <button id="btn-diff-play" title="播放/暂停">&#x25B6;</button>
+          <button id="btn-prop-step" title="传播单步">&#x23ED; 传播</button>
+          <button id="btn-chain-step" title="链单步">&#x23E9; 链</button>
+          <button id="btn-rewind" title="回溯">&#x23EE; 回溯</button>
+          <select id="diff-play-speed" title="播放速度">
+            <option value="0.5">0.5x</option>
+            <option value="1" selected>1x</option>
+            <option value="2">2x</option>
+            <option value="5">5x</option>
+            <option value="10">10x</option>
+          </select>
+        </div>
+      </div>
+      <div class="panel-section flex-grow">
+        <h3>&#x1F6A8; 告警时间线 <span id="diff-alert-count" class="badge">0</span></h3>
+        <div id="diff-alarm-list" class="diff-alarm-list"></div>
+      </div>
+    </aside>
   </main>
 
-  <!-- 底部时间线 -->
+  <!-- 底部时间线（单拓扑模式） -->
   <footer id="timeline-bar">
     <div class="timeline-controls">
       <button id="btn-play" title="播放/暂停">&#x25B6;&#xFE0F;</button>
@@ -145,8 +218,62 @@
     </div>
   </footer>
 
+  <!-- Diff 模式底部时间线 -->
+  <footer id="diff-timeline-bar" class="diff-timeline-bar" style="display:none">
+    <div class="timeline-track" style="flex:1">
+      <canvas id="timeline-histogram" width="800" height="40"></canvas>
+      <input type="range" id="diff-timeline-slider" min="0" max="100" value="0" step="0.1">
+    </div>
+    <div class="timeline-info">
+      <span id="diff-timeline-time" class="timeline-time">--:--:--</span>
+    </div>
+  </footer>
+
+  <!-- Diff 模式状态栏 -->
+  <div id="diff-status-bar" class="diff-status-bar" style="display:none">
+    <span id="status-chains">传播链: 0 条</span>
+    <span class="status-sep">|</span>
+    <span id="status-root-cause">根因节点: -</span>
+    <span class="status-sep">|</span>
+    <span id="status-affected">影响业务: 0 个</span>
+    <span class="status-sep">|</span>
+    <span id="status-step">当前步: 0</span>
+  </div>
+
+  <!-- Diff 图例 -->
+  <div id="diff-legend" class="diff-legend" style="display:none">
+    <div class="legend-title">图例</div>
+    <div id="diff-legend-content"></div>
+  </div>
+
   <!-- 隐藏的文件输入 -->
   <input type="file" id="file-input" accept=".json" class="hidden">
+
+  <!-- Diff 导入对话框 -->
+  <div id="diff-import-modal" class="dialog hidden">
+    <div class="dialog-overlay"></div>
+    <div class="dialog-content">
+      <h3>&#x1F50D; 导入差异分析数据</h3>
+      <div class="diff-import-form">
+        <div class="file-input-group">
+          <label>&#x1F4C4; 快照A（基线）:</label>
+          <input type="file" id="file-snapshot-a" accept=".json">
+        </div>
+        <div class="file-input-group">
+          <label>&#x1F4C4; 快照B（对比）:</label>
+          <input type="file" id="file-snapshot-b" accept=".json">
+        </div>
+        <div class="file-input-group">
+          <label>&#x1F4CB; 告警时间线（可选）:</label>
+          <input type="file" id="file-alerts" accept=".json">
+        </div>
+      </div>
+      <div class="dialog-actions">
+        <button id="btn-diff-import-confirm" class="btn-primary">开始分析</button>
+        <button id="btn-diff-import-cancel">取消</button>
+      </div>
+    </div>
+  </div>
 
   <!-- 导入验证对话框 -->
   <div id="validation-dialog" class="dialog hidden">
@@ -168,6 +295,9 @@
   <script src="js/interaction.js"></script>
   <script src="js/alert-replay.js"></script>
   <script src="js/import-export.js"></script>
+  <script src="js/topo-diff.js"></script>
+  <script src="js/fault-replay.js"></script>
+  <script src="js/diff-renderer.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
