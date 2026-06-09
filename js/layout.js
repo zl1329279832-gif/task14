@@ -257,7 +257,13 @@ const LayoutEngine = (() => {
    */
   function computeGroupBounds(groups, nodeMap) {
     for (const group of groups) {
-      const members = group.children.map(id => nodeMap.get(id)).filter(n => n && n._visible !== false);
+      let members;
+      if (group.collapsed) {
+        // 折叠组使用全部子节点位置，确保折叠占位符可渲染
+        members = group.children.map(id => nodeMap.get(id)).filter(Boolean);
+      } else {
+        members = group.children.map(id => nodeMap.get(id)).filter(n => n && n._visible !== false);
+      }
       if (members.length === 0) {
         group._bounds = null;
         continue;

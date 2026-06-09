@@ -84,6 +84,8 @@ const DataParser = (() => {
         _selected: false,
         _highlighted: false,
         _visible: true,
+        _collapsedHidden: false,
+        _typeHidden: false,
         _fx: null, _fy: null,
       };
 
@@ -94,6 +96,7 @@ const DataParser = (() => {
     // 2. 标准化连线
     const parsedLinks = [];
     const linkSet = new Set();
+    const linkIdSet = new Set();
 
     for (const raw of links) {
       const src = String(raw.source || raw.from || '');
@@ -113,6 +116,12 @@ const DataParser = (() => {
         continue;
       }
 
+      // 自环检测
+      if (src === tgt) {
+        messages.push({ level: 'warn', text: `自环连线 "${src}" → "${tgt}"，已跳过` });
+        continue;
+      }
+
       const linkKey = `${src}->${tgt}`;
       const reverseKey = `${tgt}->${src}`;
       if (linkSet.has(linkKey) || linkSet.has(reverseKey)) {
@@ -121,8 +130,18 @@ const DataParser = (() => {
       }
       linkSet.add(linkKey);
 
+      // 链接ID唯一性检查
+      let linkId = raw.id || `${src}_${tgt}`;
+      if (linkIdSet.has(linkId)) {
+        messages.push({ level: 'warn', text: `重复连线ID "${linkId}"，已重命名` });
+        let suffix = 2;
+        while (linkIdSet.has(`${linkId}_${suffix}`)) suffix++;
+        linkId = `${linkId}_${suffix}`;
+      }
+      linkIdSet.add(linkId);
+
       parsedLinks.push({
-        id: raw.id || `${src}_${tgt}`,
+        id: linkId,
         source: src,
         target: tgt,
         status: STATUS_TYPES[raw.status] ? raw.status : 'normal',
@@ -154,11 +173,18 @@ const DataParser = (() => {
 
     // 5. 标准化分组
     const parsedGroups = [];
+    const groupIdSet = new Set();
     for (const raw of groups) {
       if (!raw.id) continue;
+      const gid = String(raw.id);
+      if (groupIdSet.has(gid)) {
+        messages.push({ level: 'warn', text: `重复分组ID "${gid}"，保留首个` });
+        continue;
+      }
+      groupIdSet.add(gid);
       const children = (raw.children || []).filter(cid => nodeMap.has(String(cid)));
       parsedGroups.push({
-        id: String(raw.id),
+        id: gid,
         label: raw.label || raw.name || raw.id,
         children: children.map(String),
         collapsed: !!raw.collapsed,
@@ -175,7 +201,8 @@ const DataParser = (() => {
       }
     }
     for (const [gid, children] of Object.entries(autoGroups)) {
-      if (!parsedGroups.find(g => g.id === gid)) {
+      if (!parsedGroups.find(g => g.id === gid) && !groupIdSet.has(gid)) {
+        groupIdSet.add(gid);
         parsedGroups.push({
           id: gid,
           label: gid,
@@ -186,24 +213,69 @@ const DataParser = (() => {
       }
     }
 
-    // 6. 告警排序
-    const parsedAlerts = alerts
-      .filter(a => a && a.timestamp != null)
-      .map((a, i) => ({
-        id: a.id || `alert_${i}`,
-        timestamp: new Date(a.timestamp).getTime() || Date.now(),
-        nodeId: a.nodeId ? String(a.nodeId) : null,
-        linkId: a.linkId || null,
-        type: a.type || 'fault',
-        severity: a.severity || 'warning',
-        message: a.message || '未知告警',
-        affectedNodes: (a.affectedNodes || []).map(String),
-        _raw: a,
-      }))
-      .sort((a, b) => a.timestamp - b.timestamp);
+    // 6. 告警验证与排序
+    const VALID_SEVERITIES = ['normal', 'warning', 'critical', 'offline'];
+    const parsedAlerts = [];
+    let filteredAlertCount = 0;
 
-    if (alerts.length > 0 && parsedAlerts.length !== alerts.length) {
-      messages.push({ level: 'warn', text: `${alerts.length - parsedAlerts.length} 条告警因缺少时间戳被过滤` });
+    for (let i = 0; i < alerts.length; i++) {
+      const a = alerts[i];
+      if (!a || a.timestamp == null) {
+        filteredAlertCount++;
+        continue;
+      }
+
+      const ts = new Date(a.timestamp).getTime();
+      if (isNaN(ts)) {
+        filteredAlertCount++;
+        messages.push({ level: 'warn', text: `告警 #${i} 时间戳无效 "${a.timestamp}"，已跳过` });
+        continue;
+      }
+
+      // 验证 severity
+      let severity = a.severity || 'warning';
+      if (!VALID_SEVERITIES.includes(severity)) {
+        messages.push({ level: 'warn', text: `告警 #${i} 严重级别 "${severity}" 无效，默认为 warning` });
+        severity = 'warning';
+      }
+
+      // 验证 nodeId
+      const alertNodeId = a.nodeId ? String(a.nodeId) : null;
+      if (alertNodeId && !nodeMap.has(alertNodeId)) {
+        messages.push({ level: 'warn', text: `告警 #${i} 引用不存在的节点 "${alertNodeId}"` });
+      }
+
+      // 验证 linkId
+      const alertLinkId = a.linkId || null;
+      if (alertLinkId && !parsedLinks.find(l => l.id === alertLinkId)) {
+        messages.push({ level: 'warn', text: `告警 #${i} 引用不存在的连线 "${alertLinkId}"` });
+      }
+
+      // 验证 affectedNodes
+      const affectedNodes = (a.affectedNodes || []).map(String);
+      for (const affId of affectedNodes) {
+        if (!nodeMap.has(affId)) {
+          messages.push({ level: 'info', text: `告警 #${i} 受影响节点 "${affId}" 不存在` });
+        }
+      }
+
+      parsedAlerts.push({
+        id: a.id || `alert_${i}`,
+        timestamp: ts,
+        nodeId: alertNodeId,
+        linkId: alertLinkId,
+        type: a.type || 'fault',
+        severity,
+        message: a.message || '未知告警',
+        affectedNodes,
+        _raw: a,
+      });
+    }
+
+    parsedAlerts.sort((a, b) => a.timestamp - b.timestamp);
+
+    if (filteredAlertCount > 0) {
+      messages.push({ level: 'warn', text: `${filteredAlertCount} 条告警因缺少或无效时间戳被过滤` });
     }
 
     messages.push({ level: 'info', text: `解析完成: ${parsedNodes.length} 节点, ${parsedLinks.length} 连线, ${parsedGroups.length} 分组, ${parsedAlerts.length} 告警` });
@@ -368,6 +440,16 @@ const DataParser = (() => {
     return paths;
   }
 
+  /**
+   * 计算拓扑结构签名（用于布局缓存匹配）
+   */
+  function computeTopologySignature(nodes, links, groups) {
+    const nodeIds = nodes.map(n => n.id).sort().join(',');
+    const linkKeys = links.map(l => `${l.source}->${l.target}`).sort().join(',');
+    const groupIds = groups.map(g => g.id).sort().join(',');
+    return `nodes:[${nodeIds}]|links:[${linkKeys}]|groups:[${groupIds}]`;
+  }
+
   return {
     NODE_TYPES,
     STATUS_TYPES,
@@ -376,5 +458,6 @@ const DataParser = (() => {
     traceUpstream,
     traceDownstream,
     tracePathToType,
+    computeTopologySignature,
   };
 })();

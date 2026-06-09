@@ -156,6 +156,28 @@ const App = (() => {
   }
 
   /**
+   * 重置所有交互状态（导入新拓扑前调用）
+   */
+  function resetState() {
+    // 停止告警回放
+    AlertReplay.reset();
+
+    // 清除选区和高亮
+    Interaction.clearSelection();
+    Interaction.clearHighlights();
+
+    // 关闭所有面板
+    document.getElementById('detail-panel').classList.add('hidden');
+    document.getElementById('trace-panel').classList.add('hidden');
+    document.getElementById('impact-panel').classList.add('hidden');
+
+    // 重置类型过滤器为全选
+    document.querySelectorAll('#type-filters input').forEach(cb => {
+      cb.checked = true;
+    });
+  }
+
+  /**
    * 加载数据
    */
   async function loadData(rawData, showValidation) {
@@ -167,6 +189,9 @@ const App = (() => {
     }
 
     if (!result.data) return;
+
+    // 重置所有交互状态
+    resetState();
 
     // 更新全局状态
     state.nodes = result.data.nodes;

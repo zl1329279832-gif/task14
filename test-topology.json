@@ -1,0 +1,107 @@
+{
+  "nodes": [
+    { "id": "n1", "type": "server", "label": "Server-1", "group": "GroupA", "status": "warning" },
+    { "id": "n2", "type": "database", "label": "DB-1", "group": "GroupA" },
+    { "id": "n3", "type": "switch", "label": "Switch-1", "group": "GroupB" },
+    { "id": "n4", "type": "gateway", "label": "Gateway-1" },
+    { "id": "n5", "type": "app", "label": "App-1", "group": "GroupB" },
+    { "id": "n1", "type": "app", "label": "Duplicate-Server" },
+    { "id": "n6", "type": "unknown_type", "label": "Unknown-Type-Node" },
+    { "id": "n7", "type": "server", "label": "Orphan-Node" },
+    { "type": "server", "label": "No-ID-Node" }
+  ],
+  "links": [
+    { "source": "n1", "target": "n2" },
+    { "source": "n2", "target": "n3" },
+    { "source": "n3", "target": "n4" },
+    { "source": "n4", "target": "n1" },
+    { "source": "n3", "target": "n5" },
+    { "source": "n1", "target": "n1", "label": "self-loop" },
+    { "source": "n1", "target": "n2", "label": "duplicate-link" },
+    { "id": "custom_link", "source": "n1", "target": "n3" },
+    { "id": "custom_link", "source": "n2", "target": "n4" },
+    { "source": "n1", "target": "nonexistent" },
+    { "target": "n2" }
+  ],
+  "groups": [
+    { "id": "GroupA", "label": "Group A", "children": ["n1", "n2"] },
+    { "id": "GroupA", "label": "Group A Duplicate", "children": ["n3"] },
+    { "id": "GroupC", "label": "Group C", "children": ["n4", "missing_node"] }
+  ],
+  "alerts": [
+    {
+      "id": "alert-ooo-1",
+      "timestamp": "2026-06-08T10:05:00Z",
+      "nodeId": "n1",
+      "severity": "critical",
+      "message": "Server-1 critical (out of order)",
+      "type": "fault"
+    },
+    {
+      "id": "alert-ooo-2",
+      "timestamp": "2026-06-08T10:00:00Z",
+      "nodeId": "n2",
+      "severity": "warning",
+      "message": "DB-1 warning (earliest)",
+      "type": "performance"
+    },
+    {
+      "id": "alert-bad-ts",
+      "timestamp": "not-a-date",
+      "nodeId": "n1",
+      "severity": "warning",
+      "message": "Invalid timestamp alert"
+    },
+    {
+      "id": "alert-bad-sev",
+      "timestamp": "2026-06-08T10:10:00Z",
+      "nodeId": "n3",
+      "severity": "catastrophic",
+      "message": "Unknown severity level"
+    },
+    {
+      "id": "alert-ghost",
+      "timestamp": "2026-06-08T10:15:00Z",
+      "nodeId": "ghost_node",
+      "severity": "warning",
+      "message": "Alert for missing node"
+    },
+    {
+      "id": "alert-bad-link",
+      "timestamp": "2026-06-08T10:16:00Z",
+      "nodeId": "n1",
+      "linkId": "nonexistent_link",
+      "severity": "critical",
+      "message": "Alert for missing link"
+    },
+    {
+      "id": "alert-bad-affected",
+      "timestamp": "2026-06-08T10:20:00Z",
+      "nodeId": "n1",
+      "severity": "warning",
+      "message": "Alert with bad affectedNodes",
+      "affectedNodes": ["n2", "phantom"]
+    },
+    {
+      "id": "alert-recovery",
+      "timestamp": "2026-06-08T10:25:00Z",
+      "nodeId": "n1",
+      "severity": "normal",
+      "message": "Server-1 recovered",
+      "type": "recovery"
+    },
+    {
+      "nodeId": "n1",
+      "severity": "warning",
+      "message": "No timestamp alert"
+    },
+    {
+      "id": "alert-final",
+      "timestamp": "2026-06-08T10:30:00Z",
+      "nodeId": "n4",
+      "severity": "warning",
+      "message": "Final gateway alert",
+      "affectedNodes": ["n1", "n2"]
+    }
+  ]
+}

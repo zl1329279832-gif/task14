@@ -11,6 +11,7 @@ const AlertReplay = (() => {
   let playSpeed = 1;
   let playTimer = null;
   let slider = null;
+  let originalsSaved = false;
 
   // 回放间隔（毫秒）
   const BASE_INTERVAL = 1500;
@@ -38,6 +39,7 @@ const AlertReplay = (() => {
     slider.addEventListener('input', () => {
       const alerts = appState.alerts;
       if (!alerts || alerts.length === 0) return;
+      ensureOriginalStatusSaved();
       const idx = Math.round(parseFloat(slider.value) / 100 * (alerts.length - 1));
       seekTo(idx);
     });
@@ -52,6 +54,8 @@ const AlertReplay = (() => {
    * 设置告警数据并更新时间线
    */
   function setAlerts(alerts) {
+    pause();
+    clearOriginalStatus();
     appState.alerts = alerts;
     currentIndex = -1;
     updateTimelineMarkers();
@@ -129,6 +133,12 @@ const AlertReplay = (() => {
   function applyAlertState(upToIndex) {
     const alerts = appState.alerts;
 
+    // 构建链接查找表（O(1)替代O(M)的links.find）
+    const linkMap = new Map();
+    for (const link of appState.links) {
+      linkMap.set(link.id, link);
+    }
+
     // 先重置所有节点/连线状态
     resetNodeStatus();
 
@@ -152,7 +162,7 @@ const AlertReplay = (() => {
 
       // 更新连线状态
       if (alert.linkId) {
-        const link = appState.links.find(l => l.id === alert.linkId);
+        const link = linkMap.get(alert.linkId);
         if (link) {
           const severityRank = { normal: 0, warning: 1, critical: 2 };
           const newRank = severityRank[alert.severity] || 1;
@@ -181,7 +191,7 @@ const AlertReplay = (() => {
     }
 
     // 高亮当前告警节点
-    Interaction.clearHighlights();
+    Interaction.clearHighlightFlags();
     const currentAlert = alerts[upToIndex];
     if (currentAlert?.nodeId) {
       const node = appState.nodeMap.get(currentAlert.nodeId);
@@ -218,6 +228,30 @@ const AlertReplay = (() => {
     for (const link of appState.links) {
       link._originalStatus = link.status;
     }
+    originalsSaved = true;
+  }
+
+  /**
+   * 确保原始状态已保存（slider/seekTo前的防护）
+   */
+  function ensureOriginalStatusSaved() {
+    if (!originalsSaved) {
+      saveOriginalStatus();
+    }
+  }
+
+  /**
+   * 清理旧的原始状态
+   */
+  function clearOriginalStatus() {
+    if (!appState.nodes) return;
+    for (const node of appState.nodes) {
+      delete node._originalStatus;
+    }
+    for (const link of appState.links) {
+      delete link._originalStatus;
+    }
+    originalsSaved = false;
   }
 
   /**
@@ -282,6 +316,14 @@ const AlertReplay = (() => {
   function stepBack() {
     if (currentIndex > 0) {
       seekTo(currentIndex - 1);
+    } else if (currentIndex === 0) {
+      // 回到无告警状态
+      currentIndex = -1;
+      resetVisualization();
+      Interaction.updateEventList(appState.alerts, -1);
+      slider.value = 0;
+      document.getElementById('timeline-time').textContent = '--:--:--';
+      updateProgress();
     }
   }
 
@@ -340,6 +382,20 @@ const AlertReplay = (() => {
   }
 
   /**
+   * 完整重置回放器状态（供loadData调用）
+   */
+  function reset() {
+    pause();
+    clearOriginalStatus();
+    currentIndex = -1;
+    slider.value = 0;
+    slider.disabled = true;
+    document.getElementById('timeline-time').textContent = '--:--:--';
+    document.getElementById('timeline-markers').innerHTML = '';
+    updateProgress();
+  }
+
+  /**
    * 更新进度显示
    */
   function updateProgress() {
@@ -368,6 +424,7 @@ const AlertReplay = (() => {
     stepBack,
     stepForward,
     clearAllAlerts,
+    reset,
     saveOriginalStatus,
     getState,
   };

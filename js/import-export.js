@@ -108,7 +108,11 @@ const ImportExport = (() => {
    */
   function saveLayout(state) {
     try {
+      const signature = DataParser.computeTopologySignature(
+        state.nodes, state.links, state.groups
+      );
       const layoutData = {
+        signature,
         nodes: state.nodes.map(n => ({
           id: n.id,
           x: Math.round(n.x),
@@ -146,6 +150,16 @@ const ImportExport = (() => {
       const layoutData = JSON.parse(raw);
       if (!layoutData || !layoutData.nodes) return false;
 
+      // 校验拓扑签名：签名不匹配则丢弃旧缓存
+      const currentSignature = DataParser.computeTopologySignature(
+        state.nodes, state.links, state.groups
+      );
+      if (layoutData.signature && layoutData.signature !== currentSignature) {
+        console.log('拓扑结构已变化，跳过布局恢复');
+        localStorage.removeItem(LAYOUT_KEY);
+        return false;
+      }
+
       // 恢复节点位置
       const layoutMap = new Map(layoutData.nodes.map(n => [n.id, n]));
       let restored = 0;
@@ -170,7 +184,10 @@ const ImportExport = (() => {
             if (group.collapsed) {
               for (const childId of group.children) {
                 const child = state.nodeMap.get(childId);
-                if (child) child._visible = false;
+                if (child) {
+                  child._collapsedHidden = true;
+                  child._visible = !child._collapsedHidden && !child._typeHidden;
+                }
               }
             }
           }

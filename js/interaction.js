@@ -35,6 +35,32 @@ const Interaction = (() => {
   // 空格键平移模式
   let spacePressed = false;
 
+  // --- 可见性管理 ---
+  function updateNodeVisibility(node) {
+    node._visible = !node._collapsedHidden && !node._typeHidden;
+  }
+
+  function updateAllLinkVisibility() {
+    for (const link of appState.links) {
+      const src = appState.nodeMap.get(link.source);
+      const tgt = appState.nodeMap.get(link.target);
+      link._visible = src?._visible !== false && tgt?._visible !== false;
+    }
+  }
+
+  function ensureNodesVisible(nodeIds) {
+    for (const id of nodeIds) {
+      const node = appState.nodeMap.get(id);
+      if (!node) continue;
+      if (node._collapsedHidden) {
+        const group = appState.groups.find(g => g.children.includes(id));
+        if (group && group.collapsed) {
+          toggleGroupCollapse(group);
+        }
+      }
+    }
+  }
+
   /**
    * 初始化交互控制器
    */
@@ -405,20 +431,19 @@ const Interaction = (() => {
   function toggleGroupCollapse(group) {
     group.collapsed = !group.collapsed;
 
-    if (group.collapsed) {
-      // 隐藏子节点
-      for (const childId of group.children) {
-        const child = appState.nodeMap.get(childId);
-        if (child) child._visible = false;
-      }
-    } else {
-      // 显示子节点
-      for (const childId of group.children) {
-        const child = appState.nodeMap.get(childId);
-        if (child) child._visible = true;
+    for (const childId of group.children) {
+      const child = appState.nodeMap.get(childId);
+      if (child) {
+        child._collapsedHidden = group.collapsed;
+        updateNodeVisibility(child);
+        // 折叠时从选区移除被隐藏节点
+        if (child._visible === false && child._selected) {
+          deselectNode(child);
+        }
       }
     }
 
+    updateAllLinkVisibility();
     LayoutEngine.computeGroupBounds(appState.groups, appState.nodeMap);
     updateGroupList();
     renderAll();
@@ -430,10 +455,17 @@ const Interaction = (() => {
         group.collapsed = true;
         for (const childId of group.children) {
           const child = appState.nodeMap.get(childId);
-          if (child) child._visible = false;
+          if (child) {
+            child._collapsedHidden = true;
+            updateNodeVisibility(child);
+            if (child._visible === false && child._selected) {
+              deselectNode(child);
+            }
+          }
         }
       }
     }
+    updateAllLinkVisibility();
     LayoutEngine.computeGroupBounds(appState.groups, appState.nodeMap);
     updateGroupList();
     renderAll();
@@ -444,9 +476,13 @@ const Interaction = (() => {
       group.collapsed = false;
       for (const childId of group.children) {
         const child = appState.nodeMap.get(childId);
-        if (child) child._visible = true;
+        if (child) {
+          child._collapsedHidden = false;
+          updateNodeVisibility(child);
+        }
       }
     }
+    updateAllLinkVisibility();
     LayoutEngine.computeGroupBounds(appState.groups, appState.nodeMap);
     updateGroupList();
     renderAll();
@@ -555,6 +591,26 @@ const Interaction = (() => {
 
       const node = appState.nodeMap.get(item.dataset.id);
       if (node) {
+        // 如果节点因折叠而隐藏，自动展开其分组
+        if (node._collapsedHidden) {
+          const group = appState.groups.find(g => g.children.includes(node.id));
+          if (group) toggleGroupCollapse(group);
+        }
+        // 如果节点因类型过滤而隐藏，恢复过滤器
+        if (node._typeHidden) {
+          const checkbox = document.querySelector(`#type-filters input[data-type="${node.type}"]`);
+          if (checkbox) {
+            checkbox.checked = true;
+            for (const n of appState.nodes) {
+              if (n.type === node.type) {
+                n._typeHidden = false;
+                updateNodeVisibility(n);
+              }
+            }
+            updateAllLinkVisibility();
+          }
+        }
+
         clearSelection();
         selectNode(node);
         Renderer.centerOn(node.x, node.y, Math.max(Renderer.viewport.scale, 1));
@@ -564,7 +620,7 @@ const Interaction = (() => {
 
       dropdown.classList.remove('visible');
       input.value = '';
-      clearHighlights();
+      clearHighlightFlags();
     });
 
     input.addEventListener('blur', () => {
@@ -578,9 +634,15 @@ const Interaction = (() => {
     });
   }
 
-  function clearHighlights() {
+  function clearHighlightFlags() {
     for (const n of appState.nodes) n._highlighted = false;
     for (const l of appState.links) l._highlighted = false;
+  }
+
+  function clearHighlights() {
+    clearHighlightFlags();
+    document.getElementById('trace-panel').classList.add('hidden');
+    document.getElementById('impact-panel').classList.add('hidden');
   }
 
   // --- 筛选 ---
@@ -588,16 +650,18 @@ const Interaction = (() => {
     document.querySelectorAll('#type-filters input').forEach(cb => {
       cb.addEventListener('change', () => {
         const type = cb.dataset.type;
-        const visible = cb.checked;
+        const hidden = !cb.checked;
         for (const node of appState.nodes) {
-          if (node.type === type) node._visible = visible;
+          if (node.type === type) {
+            node._typeHidden = hidden;
+            updateNodeVisibility(node);
+            // 隐藏时从选区移除
+            if (node._visible === false && node._selected) {
+              deselectNode(node);
+            }
+          }
         }
-        // 更新连线可见性
-        for (const link of appState.links) {
-          const src = appState.nodeMap.get(link.source);
-          const tgt = appState.nodeMap.get(link.target);
-          link._visible = src?._visible !== false && tgt?._visible !== false;
-        }
+        updateAllLinkVisibility();
         LayoutEngine.computeGroupBounds(appState.groups, appState.nodeMap);
         renderAll();
         updateStats();
@@ -726,8 +790,12 @@ const Interaction = (() => {
     const upstream = DataParser.traceUpstream(node.id, appState.links, appState.nodeMap);
     const downstream = DataParser.traceDownstream(node.id, appState.links, appState.nodeMap);
 
+    // 自动展开包含追踪节点的折叠组
+    const allTracedIds = [node.id, ...upstream.map(n => n.id), ...downstream.map(n => n.id)];
+    ensureNodesVisible(allTracedIds);
+
     // 高亮追踪路径
-    clearHighlights();
+    clearHighlightFlags();
     node._highlighted = true;
     for (const n of upstream) n._highlighted = true;
     for (const n of downstream) n._highlighted = true;
@@ -769,6 +837,7 @@ const Interaction = (() => {
       el.addEventListener('click', () => {
         const targetNode = appState.nodeMap.get(el.dataset.id);
         if (targetNode) {
+          ensureNodesVisible([targetNode.id]);
           Renderer.centerOn(targetNode.x, targetNode.y);
           clearSelection();
           selectNode(targetNode);
@@ -904,6 +973,7 @@ const Interaction = (() => {
     selectNode,
     clearSelection,
     selectNodesByIds,
+    clearHighlightFlags,
     clearHighlights,
     toggleGroupCollapse,
     collapseAllGroups,
