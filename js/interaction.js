@@ -401,6 +401,50 @@ const Interaction = (() => {
     renderAll();
   }
 
+  /**
+   * 完全重置交互状态（导入新拓扑时调用）
+   * 清空选区、高亮、搜索、筛选、面板
+   */
+  function resetState() {
+    // 清空选中
+    clearSelection();
+
+    // 清空所有高亮
+    clearHighlights();
+
+    // 清空搜索
+    const searchInput = document.getElementById('search-input');
+    if (searchInput) searchInput.value = '';
+    const searchResults = document.getElementById('search-results');
+    if (searchResults) searchResults.classList.remove('visible');
+
+    // 重置所有节点可见性（筛选状态）
+    if (appState.nodes) {
+      for (const n of appState.nodes) {
+        n._visible = true;
+        n._selected = false;
+        n._highlighted = false;
+      }
+    }
+    if (appState.links) {
+      for (const l of appState.links) {
+        l._visible = true;
+        l._highlighted = false;
+      }
+    }
+
+    // 重置筛选复选框
+    document.querySelectorAll('#type-filters input').forEach(cb => {
+      cb.checked = true;
+    });
+
+    // 关闭面板
+    hideDetail();
+    hideImpact();
+    const tracePanel = document.getElementById('trace-panel');
+    if (tracePanel) tracePanel.classList.add('hidden');
+  }
+
   // --- 分组折叠 ---
   function toggleGroupCollapse(group) {
     group.collapsed = !group.collapsed;
@@ -555,6 +599,15 @@ const Interaction = (() => {
 
       const node = appState.nodeMap.get(item.dataset.id);
       if (node) {
+        // 如果节点在折叠的分组中，先展开
+        if (node._visible === false) {
+          for (const group of appState.groups) {
+            if (group.collapsed && group.children.includes(node.id)) {
+              toggleGroupCollapse(group);
+              break;
+            }
+          }
+        }
         clearSelection();
         selectNode(node);
         Renderer.centerOn(node.x, node.y, Math.max(Renderer.viewport.scale, 1));
@@ -901,6 +954,7 @@ const Interaction = (() => {
 
   return {
     init,
+    resetState,
     selectNode,
     clearSelection,
     selectNodesByIds,

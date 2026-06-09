@@ -13,6 +13,7 @@ const App = (() => {
     alerts: [],
     nodeMap: new Map(),
     selectedNodes: [],
+    signature: null,
     onLayoutChange: null,
     onAlertClick: null,
   };
@@ -168,15 +169,23 @@ const App = (() => {
 
     if (!result.data) return;
 
+    // ★ 关键修复：在加载新数据前完全清空旧状态
+    // 停止告警回放（防止旧定时器继续触发）
+    AlertReplay.reset();
+
+    // 清空交互状态（选区、高亮、搜索、筛选、面板）
+    Interaction.resetState();
+
     // 更新全局状态
     state.nodes = result.data.nodes;
     state.links = result.data.links;
     state.groups = result.data.groups;
     state.alerts = result.data.alerts;
     state.nodeMap = result.data.nodeMap;
+    state.signature = result.data.signature;
     state.selectedNodes = [];
 
-    // 尝试恢复布局
+    // 尝试恢复布局（仅匹配同一拓扑签名）
     const hasLayout = ImportExport.restoreLayout(state);
 
     if (!hasLayout) {

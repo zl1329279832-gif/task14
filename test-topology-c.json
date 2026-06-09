@@ -1,0 +1,75 @@
+{
+  "nodes": [
+    { "id": "c-dc", "type": "datacenter", "label": "数据中心", "group": "核心" },
+    { "id": "c-sw1", "type": "switch", "label": "交换机1", "group": "核心" },
+    { "id": "c-sw2", "type": "switch", "label": "交换机2", "group": "核心" },
+    { "id": "c-srv1", "type": "server", "label": "服务器1", "group": "业务层" },
+    { "id": "c-srv2", "type": "server", "label": "服务器2", "group": "业务层" },
+    { "id": "c-srv3", "type": "server", "label": "服务器3", "group": "业务层" },
+    { "id": "c-db1", "type": "database", "label": "数据库1", "group": "数据层" },
+    { "id": "c-db2", "type": "database", "label": "数据库2", "group": "数据层" },
+    { "id": "c-gw", "type": "gateway", "label": "入口网关" },
+    { "id": "c-app1", "type": "app", "label": "APP前端", "group": "接入层" },
+    { "id": "c-app2", "type": "app", "label": "管理后台", "group": "接入层" },
+    { "id": "c-app3", "type": "app", "label": "移动端", "group": "接入层" }
+  ],
+  "links": [
+    { "source": "c-dc", "target": "c-sw1", "status": "normal" },
+    { "source": "c-dc", "target": "c-sw2", "status": "normal" },
+    { "source": "c-sw1", "target": "c-srv1", "status": "normal" },
+    { "source": "c-sw1", "target": "c-srv2", "status": "normal" },
+    { "source": "c-sw2", "target": "c-srv3", "status": "normal" },
+    { "source": "c-srv1", "target": "c-db1", "status": "normal" },
+    { "source": "c-srv2", "target": "c-db1", "status": "normal" },
+    { "source": "c-srv3", "target": "c-db2", "status": "normal" },
+    { "source": "c-gw", "target": "c-srv1", "status": "normal" },
+    { "source": "c-gw", "target": "c-srv2", "status": "normal" },
+    { "source": "c-app1", "target": "c-gw", "status": "normal" },
+    { "source": "c-app2", "target": "c-srv3", "status": "normal" },
+    { "source": "c-app3", "target": "c-gw", "status": "normal" },
+
+    { "source": "c-srv1", "target": "c-sw1", "status": "normal", "label": "环路A" },
+    { "source": "c-db1", "target": "c-srv1", "status": "normal", "label": "环路B" }
+  ],
+  "alerts": [
+    {
+      "timestamp": "2026-06-08T09:00:00Z",
+      "nodeId": "c-srv1",
+      "severity": "warning",
+      "message": "服务器1 CPU告警",
+      "type": "performance",
+      "affectedNodes": ["c-app1", "c-app3"]
+    },
+    {
+      "timestamp": "2026-06-08T09:02:00Z",
+      "nodeId": "c-srv1",
+      "severity": "critical",
+      "message": "服务器1宕机",
+      "type": "fault",
+      "affectedNodes": ["c-app1", "c-app3", "c-db1"]
+    },
+    {
+      "timestamp": "2026-06-08T09:03:00Z",
+      "nodeId": "c-db1",
+      "severity": "warning",
+      "message": "数据库1连接超时(被影响节点也在折叠分组中)",
+      "type": "connectivity",
+      "affectedNodes": ["c-srv2"]
+    },
+    {
+      "timestamp": "2026-06-08T09:05:00Z",
+      "nodeId": "c-app1",
+      "severity": "critical",
+      "message": "APP前端不可用(在接入层分组-测试折叠后搜索定位)",
+      "type": "service"
+    },
+    {
+      "timestamp": "2026-06-08T09:08:00Z",
+      "nodeId": "c-gw",
+      "severity": "warning",
+      "message": "网关流量切换",
+      "type": "failover",
+      "affectedNodes": ["c-srv2", "c-srv3"]
+    }
+  ]
+}

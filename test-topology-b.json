@@ -1,0 +1,24 @@
+{
+  "nodes": [
+    { "id": "srv-1", "type": "server", "label": "新服务器1(与A同名但不同拓扑)", "group": "新分组X" },
+    { "id": "srv-2", "type": "server", "label": "新服务器2", "group": "新分组X" },
+    { "id": "db-1", "type": "database", "label": "新数据库", "group": "新分组Y" },
+    { "id": "app-new", "type": "app", "label": "新应用(仅B有)" },
+    { "id": "gw-new", "type": "gateway", "label": "新网关" }
+  ],
+  "links": [
+    { "source": "srv-1", "target": "db-1", "status": "normal" },
+    { "source": "srv-2", "target": "db-1", "status": "normal" },
+    { "source": "gw-new", "target": "srv-1", "status": "normal" },
+    { "source": "app-new", "target": "gw-new", "status": "normal" }
+  ],
+  "alerts": [
+    {
+      "timestamp": "2026-06-09T08:00:00Z",
+      "nodeId": "db-1",
+      "severity": "warning",
+      "message": "新数据库连接数告警",
+      "type": "capacity"
+    }
+  ]
+}

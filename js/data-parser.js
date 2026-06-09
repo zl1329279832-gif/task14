@@ -200,13 +200,46 @@ const DataParser = (() => {
         affectedNodes: (a.affectedNodes || []).map(String),
         _raw: a,
       }))
-      .sort((a, b) => a.timestamp - b.timestamp);
+      .sort((a, b) => a.timestamp - b.timestamp || a.id.localeCompare(b.id));
 
     if (alerts.length > 0 && parsedAlerts.length !== alerts.length) {
       messages.push({ level: 'warn', text: `${alerts.length - parsedAlerts.length} 条告警因缺少时间戳被过滤` });
     }
 
+    // 7. 告警去重与引用校验
+    const alertIdSet = new Set();
+    for (const a of parsedAlerts) {
+      if (alertIdSet.has(a.id)) {
+        a.id = a.id + '_' + alertIdSet.size;
+        messages.push({ level: 'warn', text: `告警ID重复，已重命名为 "${a.id}"` });
+      }
+      alertIdSet.add(a.id);
+
+      if (a.nodeId && !nodeMap.has(a.nodeId)) {
+        messages.push({ level: 'warn', text: `告警引用不存在的节点 "${a.nodeId}"，已忽略该引用` });
+        a.nodeId = null;
+      }
+      if (a.linkId) {
+        const linkExists = parsedLinks.some(l => l.id === a.linkId);
+        if (!linkExists) {
+          messages.push({ level: 'warn', text: `告警引用不存在的连线 "${a.linkId}"，已忽略该引用` });
+          a.linkId = null;
+        }
+      }
+      // 清理受影响节点中不存在的
+      a.affectedNodes = a.affectedNodes.filter(id => {
+        if (!nodeMap.has(id)) {
+          messages.push({ level: 'info', text: `告警受影响节点 "${id}" 不存在，已移除` });
+          return false;
+        }
+        return true;
+      });
+    }
+
     messages.push({ level: 'info', text: `解析完成: ${parsedNodes.length} 节点, ${parsedLinks.length} 连线, ${parsedGroups.length} 分组, ${parsedAlerts.length} 告警` });
+
+    // 8. 计算拓扑签名（用于布局缓存校验）
+    const signature = computeTopologySignature(parsedNodes, parsedLinks);
 
     return {
       data: {
@@ -217,9 +250,28 @@ const DataParser = (() => {
         nodeMap,
         cycles,
         orphans: orphans.map(n => n.id),
+        signature,
       },
       messages,
     };
+  }
+
+  /**
+   * 计算拓扑签名 — 基于节点ID和连线结构的哈希
+   * 同一拓扑结构（相同节点+连线）产生相同签名
+   */
+  function computeTopologySignature(nodes, links) {
+    const nodeIds = nodes.map(n => n.id).sort().join(',');
+    const linkKeys = links.map(l => `${l.source}->${l.target}`).sort().join(',');
+    const raw = `N:${nodeIds}|L:${linkKeys}`;
+    // 简单哈希
+    let hash = 0;
+    for (let i = 0; i < raw.length; i++) {
+      const chr = raw.charCodeAt(i);
+      hash = ((hash << 5) - hash) + chr;
+      hash |= 0;
+    }
+    return 'topo_' + Math.abs(hash).toString(36);
   }
 
   /**
@@ -376,5 +428,6 @@ const DataParser = (() => {
     traceUpstream,
     traceDownstream,
     tracePathToType,
+    computeTopologySignature,
   };
 })();

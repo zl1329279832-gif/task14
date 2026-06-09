@@ -12,6 +12,10 @@ const AlertReplay = (() => {
   let playTimer = null;
   let slider = null;
 
+  // 追踪告警系统设置的高亮节点（避免清除搜索高亮）
+  let alertHighlightedNodes = new Set();
+  let alertHighlightedLinks = new Set();
+
   // 回放间隔（毫秒）
   const BASE_INTERVAL = 1500;
 
@@ -46,6 +50,35 @@ const AlertReplay = (() => {
     document.getElementById('btn-clear-alerts').addEventListener('click', clearAllAlerts);
 
     updateTimelineMarkers();
+  }
+
+  /**
+   * 完全重置回放引擎（导入新拓扑时调用）
+   * 停止播放、清除定时器、重置索引和所有可视化状态
+   */
+  function reset() {
+    // 停止播放
+    pause();
+
+    // 重置索引
+    currentIndex = -1;
+
+    // 清除告警高亮追踪
+    for (const node of alertHighlightedNodes) {
+      if (node) node._highlighted = false;
+    }
+    alertHighlightedNodes.clear();
+    for (const link of alertHighlightedLinks) {
+      if (link) link._highlighted = false;
+    }
+    alertHighlightedLinks.clear();
+
+    // 重置UI
+    slider.value = 0;
+    slider.disabled = true;
+    document.getElementById('timeline-time').textContent = '--:--:--';
+    document.getElementById('timeline-markers').innerHTML = '';
+    updateProgress();
   }
 
   /**
@@ -180,17 +213,29 @@ const AlertReplay = (() => {
       }
     }
 
-    // 高亮当前告警节点
-    Interaction.clearHighlights();
+    // 只清除告警系统设置的高亮（不影响搜索/追踪高亮）
+    for (const node of alertHighlightedNodes) {
+      node._highlighted = false;
+    }
+    alertHighlightedNodes.clear();
+    for (const link of alertHighlightedLinks) {
+      link._highlighted = false;
+    }
+    alertHighlightedLinks.clear();
+
     const currentAlert = alerts[upToIndex];
     if (currentAlert?.nodeId) {
       const node = appState.nodeMap.get(currentAlert.nodeId);
-      if (node) node._highlighted = true;
+      if (node) {
+        node._highlighted = true;
+        alertHighlightedNodes.add(node);
+      }
 
       // 高亮相关连线
       for (const link of appState.links) {
         if (link.source === currentAlert.nodeId || link.target === currentAlert.nodeId) {
           link._highlighted = true;
+          alertHighlightedLinks.add(link);
         }
       }
     }
@@ -332,6 +377,15 @@ const AlertReplay = (() => {
   function clearAllAlerts() {
     pause();
     currentIndex = -1;
+    // 清除告警高亮追踪
+    for (const node of alertHighlightedNodes) {
+      if (node) node._highlighted = false;
+    }
+    alertHighlightedNodes.clear();
+    for (const link of alertHighlightedLinks) {
+      if (link) link._highlighted = false;
+    }
+    alertHighlightedLinks.clear();
     resetVisualization();
     Interaction.updateEventList(appState.alerts || [], -1);
     slider.value = 0;
@@ -361,6 +415,7 @@ const AlertReplay = (() => {
 
   return {
     init,
+    reset,
     setAlerts,
     play,
     pause,

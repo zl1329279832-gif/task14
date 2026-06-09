@@ -87,6 +87,7 @@ const ImportExport = (() => {
         affectedNodes: a.affectedNodes,
       })),
       exportTime: new Date().toISOString(),
+      signature: state.signature || null,
       version: '1.0',
     };
 
@@ -109,6 +110,7 @@ const ImportExport = (() => {
   function saveLayout(state) {
     try {
       const layoutData = {
+        signature: state.signature || null,
         nodes: state.nodes.map(n => ({
           id: n.id,
           x: Math.round(n.x),
@@ -136,7 +138,7 @@ const ImportExport = (() => {
   }
 
   /**
-   * 恢复布局
+   * 恢复布局（仅当拓扑签名匹配时）
    */
   function restoreLayout(state) {
     try {
@@ -145,6 +147,13 @@ const ImportExport = (() => {
 
       const layoutData = JSON.parse(raw);
       if (!layoutData || !layoutData.nodes) return false;
+
+      // ★ 关键修复：校验拓扑签名，不同拓扑不能复用布局
+      if (state.signature && layoutData.signature &&
+          state.signature !== layoutData.signature) {
+        console.log(`🔄 拓扑签名不匹配 (缓存: ${layoutData.signature}, 当前: ${state.signature})，跳过布局恢复`);
+        return false;
+      }
 
       // 恢复节点位置
       const layoutMap = new Map(layoutData.nodes.map(n => [n.id, n]));
@@ -232,6 +241,7 @@ const ImportExport = (() => {
           message: a.message,
           affectedNodes: a.affectedNodes,
         })),
+        signature: state.signature || null,
         savedAt: new Date().toISOString(),
       };
 

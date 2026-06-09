@@ -1,0 +1,87 @@
+{
+  "nodes": [
+    { "id": "dc-1", "type": "datacenter", "label": "主数据中心", "group": "A区" },
+    { "id": "sw-1", "type": "switch", "label": "核心交换机", "group": "A区" },
+    { "id": "srv-1", "type": "server", "label": "Web服务器", "group": "A区" },
+    { "id": "srv-2", "type": "server", "label": "API服务器", "group": "A区" },
+    { "id": "db-1", "type": "database", "label": "主数据库", "group": "A区" },
+
+    { "id": "dc-2", "type": "datacenter", "label": "备数据中心", "group": "B区" },
+    { "id": "sw-2", "type": "switch", "label": "备用交换机", "group": "B区" },
+    { "id": "srv-3", "type": "server", "label": "备用服务器", "group": "B区" },
+
+    { "id": "gw-1", "type": "gateway", "label": "API网关" },
+    { "id": "app-1", "type": "app", "label": "前端应用" },
+
+    { "id": "orphan-1", "type": "server", "label": "孤立节点(无连线)", "group": "C区" }
+  ],
+  "links": [
+    { "source": "dc-1", "target": "sw-1", "status": "normal" },
+    { "source": "sw-1", "target": "srv-1", "status": "normal" },
+    { "source": "sw-1", "target": "srv-2", "status": "normal" },
+    { "source": "srv-2", "target": "db-1", "status": "normal" },
+
+    { "source": "dc-2", "target": "sw-2", "status": "normal" },
+    { "source": "sw-2", "target": "srv-3", "status": "normal" },
+
+    { "source": "gw-1", "target": "srv-1", "status": "normal" },
+    { "source": "app-1", "target": "gw-1", "status": "normal" },
+
+    { "source": "srv-1", "target": "sw-1", "status": "normal", "label": "环路链路" },
+
+    { "source": "dc-1", "target": "sw-1", "status": "normal", "label": "重复连线" },
+
+    { "source": "sw-2", "target": "sw-1", "status": "normal" },
+    { "source": "sw-1", "target": "sw-2", "status": "normal", "label": "反向重复" },
+
+    { "source": "nonexistent-src", "target": "srv-1", "status": "normal" },
+    { "source": "srv-1", "target": "nonexistent-tgt", "status": "normal" }
+  ],
+  "alerts": [
+    {
+      "timestamp": "2026-06-08T10:05:00Z",
+      "nodeId": "srv-2",
+      "severity": "critical",
+      "message": "API服务器严重故障",
+      "type": "fault",
+      "affectedNodes": ["db-1"]
+    },
+    {
+      "timestamp": "2026-06-08T10:02:00Z",
+      "nodeId": "srv-1",
+      "severity": "warning",
+      "message": "Web服务器告警(时间乱序-应在前)",
+      "type": "performance"
+    },
+    {
+      "timestamp": "2026-06-08T10:05:00Z",
+      "nodeId": "srv-2",
+      "severity": "warning",
+      "message": "API服务器再次告警(同时间戳)",
+      "type": "fault"
+    },
+    {
+      "timestamp": "2026-06-08T10:08:00Z",
+      "nodeId": "ghost-node",
+      "severity": "critical",
+      "message": "引用不存在的节点",
+      "type": "fault",
+      "affectedNodes": ["also-ghost", "srv-1"]
+    },
+    {
+      "timestamp": "2026-06-08T10:10:00Z",
+      "nodeId": "srv-1",
+      "linkId": "nonexistent_link_id",
+      "severity": "warning",
+      "message": "引用不存在的连线ID",
+      "type": "connectivity"
+    },
+    {
+      "timestamp": "2026-06-08T10:12:00Z",
+      "nodeId": "srv-2",
+      "severity": "normal",
+      "message": "API服务器恢复(但严重度只升不降-会保持critical)",
+      "type": "recovery"
+    }
+  ]
+}
