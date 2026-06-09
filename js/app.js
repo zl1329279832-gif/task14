@@ -602,7 +602,8 @@ const App = (() => {
       const mergedLinks = TopoDiff.getMergedLinks();
 
       // 尝试恢复布局
-      if (!ImportExport.restoreDiffLayout(mergedNodes)) {
+      const layoutRestored = ImportExport.restoreDiffLayout(mergedNodes);
+      if (!layoutRestored) {
         LayoutEngine.layoutDiffNodes(null, mergedNodes, mergedLinks, bounds);
       }
 
@@ -620,13 +621,18 @@ const App = (() => {
       _updateDiffStatusBar();
       _populateDiffAlarmList(alerts);
 
-      // 10. 适应画布
-      Renderer.fitToView(mergedNodes);
+      // 10. 适应画布（仅在没有恢复布局时，避免覆盖已恢复的视口）
+      if (!layoutRestored) {
+        Renderer.fitToView(mergedNodes);
+      }
 
       // 11. 恢复播放进度
       const playback = ImportExport.loadDiffPlayback();
-      if (playback && playback.currentTime >= 0 && alerts.length > 0) {
+      if (playback && alerts.length > 0) {
         FaultReplay.setSpeed(playback.speed || 1);
+        if (playback.currentTime >= 0 && playback.currentTime < alerts.length) {
+          FaultReplay.jumpToAlert(alerts[playback.currentTime], alerts);
+        }
       }
 
       // 12. 保存
@@ -747,6 +753,7 @@ const App = (() => {
     }
 
     ImportExport.saveDiffFilters(_diffFilters);
+    FaultReplay.refreshHighlights();
     Interaction.renderAll();
     _updateDiffStatusBar();
   }

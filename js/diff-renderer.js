@@ -204,6 +204,7 @@ const DiffRenderer = (() => {
   }
 
   function _drawFlowingParticles(ctx, sx, sy, tx, ty, time) {
+    const vp = Renderer.viewport;
     const particleCount = 5;
     const speed = 0.02;
     ctx.fillStyle = COLORS.chainLink;
@@ -214,13 +215,14 @@ const DiffRenderer = (() => {
       const py = sy + (ty - sy) * t;
       ctx.globalAlpha = 0.9 * (1 - t * 0.3);
       ctx.beginPath();
-      ctx.arc(px, py, 3, 0, Math.PI * 2);
+      ctx.arc(px, py, 3 / vp.scale, 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.globalAlpha = 1;
   }
 
   function _drawPropagationWaves(ctx, nodes) {
+    const vp = Renderer.viewport;
     const playbackState = FaultReplay.getPlaybackState();
     const wavefront = playbackState.propagationWavefront;
     const time = _animFrame;
@@ -236,7 +238,7 @@ const DiffRenderer = (() => {
         const alpha = (0.6 / ring);
         ctx.strokeStyle = severityColor;
         ctx.globalAlpha = alpha;
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = 1.5 / vp.scale;
         ctx.beginPath();
         ctx.arc(node.x, node.y, radius, 0, Math.PI * 2);
         ctx.stroke();
@@ -307,13 +309,14 @@ const DiffRenderer = (() => {
   }
 
   function _drawNormalNode(ctx, node, typeInfo, r) {
+    const vp = Renderer.viewport;
     const statusInfo = DataParser.STATUS_TYPES[node.status] || DataParser.STATUS_TYPES.normal;
     const bgColor = _hexToRgba(typeInfo.color, 0.15);
     const borderColor = _hexToRgba(statusInfo.color, 0.8);
 
     ctx.fillStyle = bgColor;
     ctx.strokeStyle = borderColor;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2 / vp.scale;
     ctx.beginPath();
     ctx.arc(node.x, node.y, r, 0, Math.PI * 2);
     ctx.fill();
@@ -326,9 +329,9 @@ const DiffRenderer = (() => {
     ctx.fillText(typeInfo.icon, node.x, node.y);
 
     // 标签
-    if (Renderer.viewport.scale > 0.35) {
+    if (vp.scale > 0.35) {
       ctx.fillStyle = 'rgba(232,237,242,0.9)';
-      ctx.font = 'bold 11px sans-serif';
+      ctx.font = `bold ${11 / vp.scale}px sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
       ctx.fillText(_truncate(node.label, 14), node.x, node.y + r + 4);
@@ -336,11 +339,11 @@ const DiffRenderer = (() => {
   }
 
   function _drawDiffNode(ctx, node, typeInfo, colorDef, badgeChar, r) {
-    const statusInfo = DataParser.STATUS_TYPES[node.status] || DataParser.STATUS_TYPES.normal;
+    const vp = Renderer.viewport;
 
     ctx.fillStyle = _hexToRgba(colorDef.badge, 0.2);
     ctx.strokeStyle = colorDef.stroke;
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 3 / vp.scale;
     ctx.beginPath();
     ctx.arc(node.x, node.y, r, 0, Math.PI * 2);
     ctx.fill();
@@ -357,24 +360,25 @@ const DiffRenderer = (() => {
     _drawBadge(ctx, node.x + r - 2, node.y - r + 2, badgeChar, colorDef.badge);
 
     // 标签
-    if (Renderer.viewport.scale > 0.35) {
+    if (vp.scale > 0.35) {
       ctx.fillStyle = 'rgba(232,237,242,0.9)';
-      ctx.font = 'bold 11px sans-serif';
+      ctx.font = `bold ${11 / vp.scale}px sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
       ctx.fillText(_truncate(node.label, 14), node.x, node.y + r + 4);
 
       // 差异状态标签
       ctx.fillStyle = colorDef.badge;
-      ctx.font = '9px sans-serif';
+      ctx.font = `${9 / vp.scale}px sans-serif`;
       ctx.fillText(colorDef.label, node.x, node.y + r + 18);
     }
   }
 
   function _drawGhostNode(ctx, node, typeInfo, r) {
+    const vp = Renderer.viewport;
     ctx.strokeStyle = COLORS.removed.stroke;
-    ctx.lineWidth = 2;
-    ctx.setLineDash([6, 4]);
+    ctx.lineWidth = 2 / vp.scale;
+    ctx.setLineDash([6 / vp.scale, 4 / vp.scale]);
     ctx.fillStyle = COLORS.removed.fill;
     ctx.beginPath();
     ctx.arc(node.x, node.y, r, 0, Math.PI * 2);
@@ -393,20 +397,21 @@ const DiffRenderer = (() => {
     _drawBadge(ctx, node.x + r - 2, node.y - r + 2, '×', COLORS.removed.badge);
 
     // 标签
-    if (Renderer.viewport.scale > 0.35) {
+    if (vp.scale > 0.35) {
       ctx.fillStyle = 'rgba(239,68,68,0.6)';
-      ctx.font = 'bold 11px sans-serif';
+      ctx.font = `bold ${11 / vp.scale}px sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
       ctx.fillText(_truncate(node.label, 14), node.x, node.y + r + 4);
 
       ctx.fillStyle = COLORS.removed.badge;
-      ctx.font = '9px sans-serif';
+      ctx.font = `${9 / vp.scale}px sans-serif`;
       ctx.fillText('已删除', node.x, node.y + r + 18);
     }
   }
 
   function _drawChangedNode(ctx, node, typeInfo, r) {
+    const vp = Renderer.viewport;
     const statusInfo = DataParser.STATUS_TYPES[node.status] || DataParser.STATUS_TYPES.normal;
     const time = _animFrame;
 
@@ -441,8 +446,8 @@ const DiffRenderer = (() => {
 
     // 琥珀色边框 + marching ants
     ctx.strokeStyle = COLORS.changed.stroke;
-    ctx.lineWidth = 3;
-    ctx.setLineDash([6, 3]);
+    ctx.lineWidth = 3 / vp.scale;
+    ctx.setLineDash([6 / vp.scale, 3 / vp.scale]);
     ctx.lineDashOffset = -(time * 0.5);
     ctx.beginPath();
     ctx.arc(node.x, node.y, r, 0, Math.PI * 2);
@@ -461,28 +466,29 @@ const DiffRenderer = (() => {
     _drawBadge(ctx, node.x + r - 2, node.y - r + 2, 'Δ', COLORS.changed.badge);
 
     // 标签
-    if (Renderer.viewport.scale > 0.35) {
+    if (vp.scale > 0.35) {
       ctx.fillStyle = 'rgba(232,237,242,0.9)';
-      ctx.font = 'bold 11px sans-serif';
+      ctx.font = `bold ${11 / vp.scale}px sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
       ctx.fillText(_truncate(node.label, 14), node.x, node.y + r + 4);
 
       ctx.fillStyle = COLORS.changed.badge;
-      ctx.font = '9px sans-serif';
+      ctx.font = `${9 / vp.scale}px sans-serif`;
       ctx.fillText('已变更', node.x, node.y + r + 18);
     }
   }
 
   function _drawBadge(ctx, x, y, char, color) {
+    const vp = Renderer.viewport;
     ctx.save();
     ctx.globalAlpha = 1;
     ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.arc(x, y, 8, 0, Math.PI * 2);
+    ctx.arc(x, y, 8 / vp.scale, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold 10px sans-serif';
+    ctx.font = `bold ${10 / vp.scale}px sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(char, x, y);

@@ -372,7 +372,7 @@ const ImportExport = (() => {
         A: { label: snapshotA?.label || '快照A', nodes: (snapshotA?.nodes || []), links: (snapshotA?.links || []) },
         B: { label: snapshotB?.label || '快照B', nodes: (snapshotB?.nodes || []), links: (snapshotB?.links || []) }
       },
-      alerts: (alerts || []).map(a => ({ id: a.id, timestamp: a.timestamp, nodeId: a.nodeId, type: a.type, severity: a.severity, message: a.message })),
+      alerts: (alerts || []).map(a => ({ id: a.id, timestamp: a.timestamp, nodeId: a.nodeId, linkId: a.linkId, type: a.type, severity: a.severity, message: a.message, affectedNodes: a.affectedNodes })),
       diffResult, propagationAnalysis: propagation,
       userAnnotations: { pinnedNodePositions: Interaction.getPinnedPositions(), filterState: _getDiffFilters() }
     };

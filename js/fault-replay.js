@@ -542,10 +542,10 @@ const FaultReplay = (() => {
     const nodes = TopoDiff.getMergedNodes();
     const links = TopoDiff.getMergedLinks();
     for (const node of nodes) {
-      node._highlighted = _playbackState.highlightedNodeIds.has(node.id);
+      node._highlighted = node._visible !== false && _playbackState.highlightedNodeIds.has(node.id);
     }
     for (const link of links) {
-      link._highlighted = _playbackState.highlightedLinkIds.has(link.id);
+      link._highlighted = link._visible !== false && _playbackState.highlightedLinkIds.has(link.id);
     }
   }
 
@@ -586,10 +586,12 @@ const FaultReplay = (() => {
         stepCount: c.steps.length,
         steps: c.steps.map(s => ({
           order: s.order,
+          alertId: s.alertId,
           nodeId: s.nodeId,
           timestamp: s.timestamp,
           severity: s.severity,
-          message: s.message
+          message: s.message,
+          viaLinkId: s.viaLinkId
         })),
         affectedBusinessNodes: c.affectedBusinessNodes,
         totalDurationMs: c.totalDurationMs
@@ -637,6 +639,7 @@ const FaultReplay = (() => {
     highlightAffectedBusiness,
     highlightUpstreamFrom,
     clearHighlights,
+    refreshHighlights: _applyHighlightsToNodes,
     getChainsForNode,
     getChainForAlert,
     getRootCause,

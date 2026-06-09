@@ -151,8 +151,10 @@ const Interaction = (() => {
       dragState.lastWorldX = worldPos.x;
       dragState.lastWorldY = worldPos.y;
 
-      // 更新分组边界
-      LayoutEngine.computeGroupBounds(appState.groups, appState.nodeMap);
+      // 更新分组边界（仅单拓扑模式）
+      if (!Renderer.isDiffMode()) {
+        LayoutEngine.computeGroupBounds(appState.groups, appState.nodeMap);
+      }
       renderAll();
     } else if (panState.active) {
       // 平移画布
@@ -168,8 +170,9 @@ const Interaction = (() => {
       boxSelectState.currentY = pos.y;
       drawSelectionBox();
     } else {
-      // 悬停效果
-      const hitNode = Renderer.hitTest(worldPos.x, worldPos.y, appState.nodes);
+      // 悬停效果（diff 模式使用合并后的节点集）
+      const nodes = Renderer.isDiffMode() ? TopoDiff.getMergedNodes() : appState.nodes;
+      const hitNode = Renderer.hitTest(worldPos.x, worldPos.y, nodes);
       mainCanvas.style.cursor = hitNode ? 'pointer' : 'grab';
     }
   }
@@ -296,8 +299,12 @@ const Interaction = (() => {
     dragState.active = false;
     dragState.node = null;
     canvasContainer.classList.remove('dragging');
-    // 自动保存布局
-    if (appState.onLayoutChange) appState.onLayoutChange();
+    // 自动保存布局（区分 diff/单拓扑模式）
+    if (Renderer.isDiffMode()) {
+      ImportExport.saveDiffLayout(TopoDiff.getMergedNodes());
+    } else if (appState.onLayoutChange) {
+      appState.onLayoutChange();
+    }
   }
 
   // --- 平移 ---
