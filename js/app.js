@@ -228,8 +228,10 @@ const App = (() => {
     // 设置告警
     AlertReplay.setAlerts(state.alerts);
 
-    // 适应画布
-    Renderer.fitToView(state.nodes);
+    // 适应画布（仅在布局未恢复时，避免覆盖已保存的视口位置）
+    if (!hasLayout) {
+      Renderer.fitToView(state.nodes);
+    }
 
     // 更新UI
     Interaction.updateStats();
@@ -602,7 +604,8 @@ const App = (() => {
       const mergedLinks = TopoDiff.getMergedLinks();
 
       // 尝试恢复布局
-      if (!ImportExport.restoreDiffLayout(mergedNodes)) {
+      const hasDiffLayout = ImportExport.restoreDiffLayout(mergedNodes);
+      if (!hasDiffLayout) {
         LayoutEngine.layoutDiffNodes(null, mergedNodes, mergedLinks, bounds);
       }
 
@@ -620,13 +623,39 @@ const App = (() => {
       _updateDiffStatusBar();
       _populateDiffAlarmList(alerts);
 
-      // 10. 适应画布
-      Renderer.fitToView(mergedNodes);
+      // 10. 适应画布（仅在布局未恢复时）
+      if (!hasDiffLayout) {
+        Renderer.fitToView(mergedNodes);
+      }
 
       // 11. 恢复播放进度
       const playback = ImportExport.loadDiffPlayback();
-      if (playback && playback.currentTime >= 0 && alerts.length > 0) {
+      if (playback) {
         FaultReplay.setSpeed(playback.speed || 1);
+        // 如果布局未恢复但从播放状态中有视口信息，恢复视口
+        if (!hasDiffLayout && playback.viewport &&
+            typeof playback.viewport.x === 'number' &&
+            typeof playback.viewport.y === 'number' &&
+            typeof playback.viewport.scale === 'number' &&
+            isFinite(playback.viewport.x) &&
+            isFinite(playback.viewport.y) &&
+            playback.viewport.scale > 0) {
+          Renderer.viewport.x = playback.viewport.x;
+          Renderer.viewport.y = playback.viewport.y;
+          Renderer.viewport.scale = playback.viewport.scale;
+        }
+        // 恢复到保存的告警位置
+        if (playback.currentTime >= 0 && alerts.length > 0) {
+          const restoreIdx = Math.min(playback.currentTime, alerts.length - 1);
+          if (restoreIdx >= 0) {
+            FaultReplay.jumpToTime(alerts[restoreIdx]?.timestamp || 0, alerts);
+            // 更新 diff 时间线滑块
+            const slider = document.getElementById('diff-timeline-slider');
+            if (slider && alerts.length > 1) {
+              slider.value = (restoreIdx / (alerts.length - 1)) * 100;
+            }
+          }
+        }
       }
 
       // 12. 保存
@@ -746,6 +775,19 @@ const App = (() => {
       }
     }
 
+    // 重建可见节点的 Set，用于更新传播链可见性
+    const visibleNodeIds = new Set();
+    for (const node of nodes) {
+      if (node._visible !== false) visibleNodeIds.add(node.id);
+    }
+
+    // 更新 FaultReplay 中传播链的可见性标记
+    const chains = FaultReplay.getChains();
+    for (const chain of chains) {
+      chain._visibleSteps = chain.steps.filter(s => visibleNodeIds.has(s.nodeId));
+      chain._anyVisible = chain._visibleSteps.length > 0;
+    }
+
     ImportExport.saveDiffFilters(_diffFilters);
     Interaction.renderAll();
     _updateDiffStatusBar();
@@ -801,7 +843,11 @@ const App = (() => {
     const rootCause = FaultReplay.getRootCause();
     const playbackState = FaultReplay.getPlaybackState();
     const allBizNodes = new Set();
+    let visibleChainCount = 0;
     for (const chain of chains) {
+      // 只统计可见的传播链
+      if (chain._anyVisible === false) continue;
+      visibleChainCount++;
       for (const biz of chain.affectedBusinessNodes) allBizNodes.add(biz);
     }
 
@@ -810,7 +856,7 @@ const App = (() => {
     const elAffected = document.getElementById('status-affected');
     const elStep = document.getElementById('status-step');
 
-    if (elChains) elChains.textContent = `传播链: ${chains.length} 条`;
+    if (elChains) elChains.textContent = `传播链: ${visibleChainCount} 条`;
     if (elRoot) elRoot.textContent = `根因节点: ${rootCause || '-'}`;
     if (elAffected) elAffected.textContent = `影响业务: ${allBizNodes.size} 个`;
     if (elStep) elStep.textContent = `当前步: ${playbackState.activeAlertIndex + 1} / ${TopoDiff.getAlerts().length}`;

@@ -264,14 +264,14 @@ const TopoDiff = (() => {
   }
 
   /**
-   * 获取可序列化的差异结果（去除 _ 前缀字段）
+   * 获取可序列化的差异结果（包含世界坐标）
    */
   function getSerializableResult() {
     if (!_diffResult) return null;
     return {
       meta: _diffResult.meta,
-      nodesAdded: _diffResult.nodesAdded.map(n => ({ id: n.id, type: n.type, label: n.label })),
-      nodesRemoved: _diffResult.nodesRemoved.map(n => ({ id: n.id, type: n.type, label: n.label })),
+      nodesAdded: _diffResult.nodesAdded.map(n => ({ id: n.id, type: n.type, label: n.label, x: n.x, y: n.y })),
+      nodesRemoved: _diffResult.nodesRemoved.map(n => ({ id: n.id, type: n.type, label: n.label, x: n.x, y: n.y })),
       nodesChanged: _diffResult.nodesChanged.map(n => ({ id: n.id, type: n.type, label: n.label, changes: n.changes })),
       linksAdded: _diffResult.linksAdded.map(l => ({ id: l.id, source: l.source, target: l.target, status: l.status })),
       linksRemoved: _diffResult.linksRemoved.map(l => ({ id: l.id, source: l.source, target: l.target, status: l.status })),

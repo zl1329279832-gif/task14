@@ -1066,6 +1066,21 @@ const Interaction = (() => {
         }
       }
 
+      // 居中视口到告警节点
+      if (alert.nodeId) {
+        const nodeMap = TopoDiff.getMergedNodeMap();
+        const node = nodeMap.get(alert.nodeId);
+        if (node && node._visible !== false && node.x != null && node.y != null) {
+          const screenPos = Renderer.worldToScreen(node.x, node.y);
+          const size = Renderer.getCanvasSize();
+          const margin = 80;
+          if (screenPos.x < margin || screenPos.x > size.width - margin ||
+              screenPos.y < margin || screenPos.y > size.height - margin) {
+            Renderer.centerOn(node.x, node.y);
+          }
+        }
+      }
+
       renderAll();
     });
   }

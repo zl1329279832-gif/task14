@@ -423,6 +423,22 @@ const FaultReplay = (() => {
       AlertReplay.seekTo(index);
     }
 
+    // 居中视口到当前告警节点（如果不在可视区域）
+    const currentAlert = alerts[index];
+    if (currentAlert && currentAlert.nodeId) {
+      const nodeMap = TopoDiff.getMergedNodeMap();
+      const node = nodeMap.get(currentAlert.nodeId);
+      if (node && node._visible !== false && node.x != null && node.y != null) {
+        const screenPos = Renderer.worldToScreen(node.x, node.y);
+        const size = Renderer.getCanvasSize();
+        const margin = 80;
+        if (screenPos.x < margin || screenPos.x > size.width - margin ||
+            screenPos.y < margin || screenPos.y > size.height - margin) {
+          Renderer.centerOn(node.x, node.y);
+        }
+      }
+    }
+
     // 更新事件列表
     Interaction.updateEventList(alerts, index);
     Interaction.renderAll();
@@ -542,10 +558,19 @@ const FaultReplay = (() => {
     const nodes = TopoDiff.getMergedNodes();
     const links = TopoDiff.getMergedLinks();
     for (const node of nodes) {
-      node._highlighted = _playbackState.highlightedNodeIds.has(node.id);
+      // 只对可见节点应用高亮，避免隐藏节点的高亮状态残留
+      if (node._visible === false) {
+        node._highlighted = false;
+      } else {
+        node._highlighted = _playbackState.highlightedNodeIds.has(node.id);
+      }
     }
     for (const link of links) {
-      link._highlighted = _playbackState.highlightedLinkIds.has(link.id);
+      if (link._visible === false) {
+        link._highlighted = false;
+      } else {
+        link._highlighted = _playbackState.highlightedLinkIds.has(link.id);
+      }
     }
   }
 

@@ -154,6 +154,12 @@ const AlertReplay = (() => {
     // 更新影响范围
     if (alert.nodeId) {
       Interaction.showImpact(alert.nodeId);
+
+      // 居中视口到告警节点（仅在节点不在视口内时）
+      const node = appState.nodeMap.get(alert.nodeId);
+      if (node && node._visible !== false) {
+        _ensureNodeInView(node);
+      }
     }
 
     updateProgress();
@@ -162,6 +168,22 @@ const AlertReplay = (() => {
     // diff 模式回调
     if (_mode === 'diff' && onDiffAlertFired) {
       onDiffAlertFired(alert);
+    }
+  }
+
+  /**
+   * 确保节点在可视区域内，如果不在则居中
+   */
+  function _ensureNodeInView(node) {
+    const vp = Renderer.viewport;
+    const size = Renderer.getCanvasSize();
+    const screenPos = Renderer.worldToScreen(node.x, node.y);
+    const margin = 80;
+
+    // 检查节点是否在视口内
+    if (screenPos.x < margin || screenPos.x > size.width - margin ||
+        screenPos.y < margin || screenPos.y > size.height - margin) {
+      Renderer.centerOn(node.x, node.y);
     }
   }
 

@@ -86,6 +86,12 @@ const ImportExport = (() => {
         message: a.message,
         affectedNodes: a.affectedNodes,
       })),
+      // 导出当前视口状态（世界坐标空间）
+      viewport: {
+        x: Math.round(Renderer.viewport.x * 100) / 100,
+        y: Math.round(Renderer.viewport.y * 100) / 100,
+        scale: Math.round(Renderer.viewport.scale * 1000) / 1000,
+      },
       exportTime: new Date().toISOString(),
       signature: state.signature || null,
       version: '1.0',
@@ -113,8 +119,8 @@ const ImportExport = (() => {
         signature: state.signature || null,
         nodes: state.nodes.map(n => ({
           id: n.id,
-          x: Math.round(n.x),
-          y: Math.round(n.y),
+          x: isFinite(n.x) ? Math.round(n.x) : 0,
+          y: isFinite(n.y) ? Math.round(n.y) : 0,
           pinned: n.pinned,
         })),
         groups: state.groups.map(g => ({
@@ -122,9 +128,9 @@ const ImportExport = (() => {
           collapsed: g.collapsed,
         })),
         viewport: {
-          x: Renderer.viewport.x,
-          y: Renderer.viewport.y,
-          scale: Renderer.viewport.scale,
+          x: isFinite(Renderer.viewport.x) ? Renderer.viewport.x : 0,
+          y: isFinite(Renderer.viewport.y) ? Renderer.viewport.y : 0,
+          scale: isFinite(Renderer.viewport.scale) && Renderer.viewport.scale > 0 ? Renderer.viewport.scale : 1,
         },
         savedAt: new Date().toISOString(),
       };
@@ -139,6 +145,7 @@ const ImportExport = (() => {
 
   /**
    * 恢复布局（仅当拓扑签名匹配时）
+   * @returns {boolean} 是否成功恢复了布局（包括视口位置）
    */
   function restoreLayout(state) {
     try {
@@ -187,13 +194,21 @@ const ImportExport = (() => {
       }
 
       // 恢复视口
-      if (layoutData.viewport) {
+      let viewportRestored = false;
+      if (layoutData.viewport &&
+          typeof layoutData.viewport.x === 'number' &&
+          typeof layoutData.viewport.y === 'number' &&
+          typeof layoutData.viewport.scale === 'number' &&
+          isFinite(layoutData.viewport.x) &&
+          isFinite(layoutData.viewport.y) &&
+          layoutData.viewport.scale > 0) {
         Renderer.viewport.x = layoutData.viewport.x;
         Renderer.viewport.y = layoutData.viewport.y;
         Renderer.viewport.scale = layoutData.viewport.scale;
+        viewportRestored = true;
       }
 
-      return restored > 0;
+      return restored > 0 || viewportRestored;
     } catch (err) {
       console.warn('恢复布局失败:', err);
       return false;
@@ -366,6 +381,8 @@ const ImportExport = (() => {
     const snapshotB = TopoDiff.getSnapshotB();
     const alerts = TopoDiff.getAlerts();
     const propagation = FaultReplay.getSerializableGraph();
+    const mergedNodes = TopoDiff.getMergedNodes();
+    const mergedLinks = TopoDiff.getMergedLinks();
     const pkg = {
       exportType: 'topology-diff-analysis', version: '1.0', exportedAt: new Date().toISOString(),
       snapshots: {
@@ -374,6 +391,21 @@ const ImportExport = (() => {
       },
       alerts: (alerts || []).map(a => ({ id: a.id, timestamp: a.timestamp, nodeId: a.nodeId, type: a.type, severity: a.severity, message: a.message })),
       diffResult, propagationAnalysis: propagation,
+      // 导出合并拓扑的世界坐标（用于外部工具重新加载）
+      mergedTopology: {
+        nodes: mergedNodes.map(n => ({
+          id: n.id, type: n.type, label: n.label,
+          x: Math.round(n.x || 0), y: Math.round(n.y || 0),
+          status: n.status, diffState: n._diffState,
+        })),
+        links: mergedLinks.map(l => ({
+          id: l.id, source: l.source, target: l.target,
+          status: l.status, diffState: l._diffState,
+        })),
+      },
+      viewport: {
+        x: Renderer.viewport.x, y: Renderer.viewport.y, scale: Renderer.viewport.scale,
+      },
       userAnnotations: { pinnedNodePositions: Interaction.getPinnedPositions(), filterState: _getDiffFilters() }
     };
     const blob = new Blob([JSON.stringify(pkg, null, 2)], { type: 'application/json' });
@@ -406,8 +438,19 @@ const ImportExport = (() => {
   function saveDiffLayout(mergedNodes) {
     try {
       const positions = {};
-      for (const n of mergedNodes) { if (n.x != null) positions[n.id] = { x: Math.round(n.x), y: Math.round(n.y), pinned: n.pinned }; }
-      localStorage.setItem(DIFF_LAYOUT_KEY, JSON.stringify({ positions, viewport: { x: Renderer.viewport.x, y: Renderer.viewport.y, scale: Renderer.viewport.scale } }));
+      for (const n of mergedNodes) {
+        if (n.x != null && isFinite(n.x) && n.y != null && isFinite(n.y)) {
+          positions[n.id] = { x: Math.round(n.x), y: Math.round(n.y), pinned: n.pinned };
+        }
+      }
+      localStorage.setItem(DIFF_LAYOUT_KEY, JSON.stringify({
+        positions,
+        viewport: {
+          x: isFinite(Renderer.viewport.x) ? Renderer.viewport.x : 0,
+          y: isFinite(Renderer.viewport.y) ? Renderer.viewport.y : 0,
+          scale: isFinite(Renderer.viewport.scale) && Renderer.viewport.scale > 0 ? Renderer.viewport.scale : 1,
+        }
+      }));
     } catch (e) {}
   }
 
@@ -416,19 +459,54 @@ const ImportExport = (() => {
       const raw = localStorage.getItem(DIFF_LAYOUT_KEY);
       if (!raw) return false;
       const data = JSON.parse(raw);
+      let restored = 0;
       for (const node of mergedNodes) {
         const saved = data.positions?.[node.id];
-        if (saved) { node.x = saved.x; node.y = saved.y; node.pinned = saved.pinned || false; }
+        if (saved && typeof saved.x === 'number' && typeof saved.y === 'number') {
+          node.x = saved.x;
+          node.y = saved.y;
+          node.pinned = saved.pinned || false;
+          restored++;
+        }
       }
-      if (data.viewport) { Renderer.viewport.x = data.viewport.x; Renderer.viewport.y = data.viewport.y; Renderer.viewport.scale = data.viewport.scale; }
-      return true;
+      let viewportRestored = false;
+      if (data.viewport &&
+          typeof data.viewport.x === 'number' &&
+          typeof data.viewport.y === 'number' &&
+          typeof data.viewport.scale === 'number' &&
+          isFinite(data.viewport.x) &&
+          isFinite(data.viewport.y) &&
+          data.viewport.scale > 0) {
+        Renderer.viewport.x = data.viewport.x;
+        Renderer.viewport.y = data.viewport.y;
+        Renderer.viewport.scale = data.viewport.scale;
+        viewportRestored = true;
+      }
+      return restored > 0 || viewportRestored;
     } catch (e) { return false; }
   }
 
   function saveDiffFilters(filters) { try { localStorage.setItem(DIFF_FILTERS_KEY, JSON.stringify(filters)); } catch(e) {} }
   function loadDiffFilters() { try { const r = localStorage.getItem(DIFF_FILTERS_KEY); return r ? JSON.parse(r) : null; } catch(e) { return null; } }
-  function saveDiffPlayback(state) { try { localStorage.setItem(DIFF_PLAYBACK_KEY, JSON.stringify({ currentTime: state.activeAlertIndex, speed: state.speed })); } catch(e) {} }
-  function loadDiffPlayback() { try { const r = localStorage.getItem(DIFF_PLAYBACK_KEY); return r ? JSON.parse(r) : null; } catch(e) { return null; } }
+  function saveDiffPlayback(state) {
+    try {
+      localStorage.setItem(DIFF_PLAYBACK_KEY, JSON.stringify({
+        currentTime: state.activeAlertIndex,
+        speed: state.speed,
+        viewport: {
+          x: Renderer.viewport.x,
+          y: Renderer.viewport.y,
+          scale: Renderer.viewport.scale,
+        }
+      }));
+    } catch(e) {}
+  }
+  function loadDiffPlayback() {
+    try {
+      const r = localStorage.getItem(DIFF_PLAYBACK_KEY);
+      return r ? JSON.parse(r) : null;
+    } catch(e) { return null; }
+  }
 
   function clearDiffStorage() {
     [DIFF_SNAPSHOT_A_KEY, DIFF_SNAPSHOT_B_KEY, DIFF_ALERTS_KEY, DIFF_LAYOUT_KEY, DIFF_FILTERS_KEY, DIFF_PLAYBACK_KEY]
