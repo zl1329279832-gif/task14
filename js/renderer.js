@@ -217,14 +217,23 @@ const Renderer = (() => {
 
       const statusColor = DataParser.STATUS_TYPES[link.status]?.color || '#5a6a7a';
 
-      ctx.strokeStyle = link._highlighted
-        ? '#4a9eff'
-        : statusColor;
+      // 差异颜色覆盖（对比模式）
+      let effectiveColor = statusColor;
+      let diffAlphaOverride = null;
+      if (link._diffStatus && link._diffStatus !== 'unchanged') {
+        const diffLinkColors = { added: '#4aff8a', deleted: '#ff4a6a', changed: '#ffaa4a' };
+        effectiveColor = diffLinkColors[link._diffStatus] || statusColor;
+        if (link._diffStatus === 'deleted') diffAlphaOverride = 0.35;
+      }
+
+      ctx.strokeStyle = link._highlighted ? '#4a9eff' : effectiveColor;
       ctx.lineWidth = link._highlighted ? 3 / viewport.scale : 1.5 / viewport.scale;
-      ctx.globalAlpha = link._highlighted ? 1 : 0.6;
+      ctx.globalAlpha = diffAlphaOverride !== null ? diffAlphaOverride : (link._highlighted ? 1 : 0.6);
 
       // 虚线样式
-      if (link.status === 'warning') {
+      if (link._diffStatus === 'deleted') {
+        ctx.setLineDash([2 / viewport.scale, 5 / viewport.scale]);
+      } else if (link.status === 'warning') {
         ctx.setLineDash([6 / viewport.scale, 4 / viewport.scale]);
       } else if (link.status === 'critical') {
         ctx.setLineDash([3 / viewport.scale, 3 / viewport.scale]);
@@ -350,6 +359,55 @@ const Renderer = (() => {
 
       // 节点主体
       drawNodeShape(ctx, node.type, x, y, r, typeInfo, statusInfo, node.pinned);
+
+      // 差异覆盖层（对比模式）
+      if (node._diffStatus && node._diffStatus !== 'unchanged') {
+        ctx.save();
+        const diffColors = { added: '#4aff8a', deleted: '#ff4a6a', changed: '#ffaa4a' };
+        const dc = diffColors[node._diffStatus];
+        if (dc) {
+          // 差异指示外圈
+          ctx.strokeStyle = dc;
+          ctx.lineWidth = 2.5 / viewport.scale;
+          ctx.setLineDash([5 / viewport.scale, 3 / viewport.scale]);
+          ctx.beginPath();
+          ctx.arc(x, y, r + 8, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // 右上角三角标记
+          const bx = x + r - 2, by = y - r - 6;
+          ctx.fillStyle = dc;
+          ctx.beginPath();
+          ctx.moveTo(bx, by);
+          ctx.lineTo(bx + 12, by);
+          ctx.lineTo(bx + 12, by + 12);
+          ctx.closePath();
+          ctx.fill();
+
+          // 差异符号
+          const diffLabels = { added: '+', deleted: '-', changed: '~' };
+          ctx.fillStyle = '#fff';
+          ctx.font = `bold ${9 / viewport.scale}px sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(diffLabels[node._diffStatus], bx + 6, by + 6);
+        }
+
+        // 删除节点：半透明 + 叉号
+        if (node._diffStatus === 'deleted') {
+          ctx.globalAlpha = 0.45;
+          ctx.strokeStyle = '#ff4a6a';
+          ctx.lineWidth = 2 / viewport.scale;
+          ctx.beginPath();
+          ctx.moveTo(x - r * 0.5, y - r * 0.5);
+          ctx.lineTo(x + r * 0.5, y + r * 0.5);
+          ctx.moveTo(x + r * 0.5, y - r * 0.5);
+          ctx.lineTo(x - r * 0.5, y + r * 0.5);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
 
       // 图标
       ctx.font = `${NODE_ICON_SIZE / viewport.scale * viewport.scale}px sans-serif`;
@@ -541,7 +599,13 @@ const Renderer = (() => {
     for (const n of nodes) {
       if (n._visible === false) continue;
       const statusColor = DataParser.STATUS_TYPES[n.status]?.color || '#5a6a7a';
-      minimapCtx.fillStyle = statusColor;
+      // 对比模式下使用差异颜色
+      if (n._diffStatus && n._diffStatus !== 'unchanged') {
+        const minimapDiffColors = { added: '#4aff8a', deleted: '#ff4a6a', changed: '#ffaa4a' };
+        minimapCtx.fillStyle = minimapDiffColors[n._diffStatus] || statusColor;
+      } else {
+        minimapCtx.fillStyle = statusColor;
+      }
       minimapCtx.beginPath();
       minimapCtx.arc(toMiniX(n.x), toMiniY(n.y), 2.5, 0, Math.PI * 2);
       minimapCtx.fill();

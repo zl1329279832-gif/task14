@@ -27,6 +27,11 @@
         <button id="btn-collapse-all" title="折叠所有分组">&#x1F4C1; 折叠</button>
         <button id="btn-expand-all" title="展开所有分组">&#x1F4C2; 展开</button>
       </div>
+      <div class="toolbar-separator"></div>
+      <div class="toolbar-group">
+        <button id="btn-diff-mode" title="拓扑差异对比">&#x1F50D; 对比</button>
+        <button id="btn-exit-diff" class="hidden" title="退出对比模式">&#x274C; 退出对比</button>
+      </div>
     </div>
     <div class="toolbar-right">
       <div class="search-box">
@@ -43,6 +48,28 @@
   <main id="main-container">
     <!-- 左侧面板：拓扑概览 -->
     <aside id="left-panel">
+      <!-- 差异概览（对比模式） -->
+      <div id="diff-summary-panel" class="panel-section hidden">
+        <h3>&#x1F504; 差异概览</h3>
+        <div id="diff-stats" class="stats-grid">
+          <div class="stat-item"><span class="stat-label">新增节点</span><span id="stat-diff-added" class="stat-value diff-added">0</span></div>
+          <div class="stat-item"><span class="stat-label">删除节点</span><span id="stat-diff-deleted" class="stat-value diff-deleted">0</span></div>
+          <div class="stat-item"><span class="stat-label">变更节点</span><span id="stat-diff-changed" class="stat-value diff-changed">0</span></div>
+          <div class="stat-item"><span class="stat-label">无变化</span><span id="stat-diff-unchanged" class="stat-value">0</span></div>
+        </div>
+        <div id="diff-filters" class="filter-list" style="margin-top:8px;">
+          <label class="filter-item"><input type="checkbox" data-diff-filter="showAdded" checked> &#x2795; 新增</label>
+          <label class="filter-item"><input type="checkbox" data-diff-filter="showDeleted" checked> &#x2796; 删除</label>
+          <label class="filter-item"><input type="checkbox" data-diff-filter="showChanged" checked> &#x1F504; 变更</label>
+          <label class="filter-item"><input type="checkbox" data-diff-filter="showUnchanged" checked> &#x2705; 无变化</label>
+        </div>
+        <h4 style="margin:8px 0 4px;font-size:11px;color:var(--text-secondary)">告警等级筛选</h4>
+        <div id="diff-severity-filters" class="filter-list">
+          <label class="filter-item"><input type="checkbox" data-diff-filter="severity_critical" checked> &#x1F534; 严重</label>
+          <label class="filter-item"><input type="checkbox" data-diff-filter="severity_warning" checked> &#x1F7E0; 告警</label>
+          <label class="filter-item"><input type="checkbox" data-diff-filter="severity_normal" checked> &#x1F7E2; 正常</label>
+        </div>
+      </div>
       <div class="panel-section">
         <h3>&#x1F4CA; 拓扑概览</h3>
         <div id="topology-stats" class="stats-grid">
@@ -94,6 +121,11 @@
       <div id="selection-box" class="selection-box hidden"></div>
       <!-- 缩放指示器 -->
       <div id="zoom-indicator" class="zoom-indicator hidden">100%</div>
+      <!-- 对比模式横幅 -->
+      <div id="diff-mode-banner" class="diff-mode-banner hidden">
+        &#x1F50D; 对比模式 | <span id="diff-banner-info">A vs B</span>
+        <button id="btn-export-diff" title="导出差异报告">&#x1F4BE; 导出差异</button>
+      </div>
     </div>
 
     <!-- 右侧面板 -->
@@ -102,6 +134,11 @@
       <div id="detail-panel" class="panel-section hidden">
         <h3>&#x1F4CB; 节点详情 <button id="btn-close-detail" class="btn-close">&#x2715;</button></h3>
         <div id="detail-content"></div>
+      </div>
+      <!-- 差异详情（对比模式） -->
+      <div id="diff-detail-panel" class="panel-section hidden">
+        <h3>&#x1F504; 变更详情 <button id="btn-close-diff-detail" class="btn-close">&#x2715;</button></h3>
+        <div id="diff-detail-content"></div>
       </div>
       <!-- 追踪面板 -->
       <div id="trace-panel" class="panel-section hidden">
@@ -147,6 +184,8 @@
 
   <!-- 隐藏的文件输入 -->
   <input type="file" id="file-input" accept=".json" class="hidden">
+  <input type="file" id="file-input-a" accept=".json" class="hidden">
+  <input type="file" id="file-input-b" accept=".json" class="hidden">
 
   <!-- 导入验证对话框 -->
   <div id="validation-dialog" class="dialog hidden">
@@ -161,12 +200,38 @@
     </div>
   </div>
 
+  <!-- 对比导入对话框 -->
+  <div id="diff-import-dialog" class="dialog hidden">
+    <div class="dialog-overlay"></div>
+    <div class="dialog-content">
+      <h3>&#x1F50D; 拓扑差异对比</h3>
+      <p style="color:var(--text-secondary);font-size:12px;margin-bottom:12px;">请分别导入故障前后的拓扑快照进行对比分析</p>
+      <div class="diff-import-steps">
+        <div class="diff-step" id="diff-step-a">
+          <span class="diff-step-label">&#x1F4C1; 快照A (故障前)</span>
+          <button id="btn-import-snapshot-a" class="btn-primary">选择文件</button>
+          <span id="diff-file-a" class="diff-file-name">未选择</span>
+        </div>
+        <div class="diff-step" id="diff-step-b">
+          <span class="diff-step-label">&#x1F4C1; 快照B (故障后)</span>
+          <button id="btn-import-snapshot-b" class="btn-primary">选择文件</button>
+          <span id="diff-file-b" class="diff-file-name">未选择</span>
+        </div>
+      </div>
+      <div class="dialog-actions">
+        <button id="btn-diff-start" class="btn-primary" disabled>开始对比</button>
+        <button id="btn-diff-cancel">取消</button>
+      </div>
+    </div>
+  </div>
+
   <!-- JS模块加载 -->
   <script src="js/data-parser.js"></script>
   <script src="js/layout.js"></script>
   <script src="js/renderer.js"></script>
   <script src="js/interaction.js"></script>
   <script src="js/alert-replay.js"></script>
+  <script src="js/topology-diff.js"></script>
   <script src="js/import-export.js"></script>
   <script src="js/app.js"></script>
 </body>

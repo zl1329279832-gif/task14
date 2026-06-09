@@ -7,6 +7,7 @@ const ImportExport = (() => {
 
   const STORAGE_KEY = 'topology_viewer_data';
   const LAYOUT_KEY = 'topology_viewer_layout';
+  const DIFF_STATE_KEY = 'topology_viewer_diff_state';
 
   /**
    * 导入JSON文件
@@ -273,6 +274,65 @@ const ImportExport = (() => {
   function clearStorage() {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(LAYOUT_KEY);
+    localStorage.removeItem(DIFF_STATE_KEY);
+  }
+
+  /**
+   * 导出差异报告JSON
+   */
+  function exportDiffData(diffState) {
+    const data = TopologyDiff.exportDiffResult();
+    if (!data) return;
+
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'topology_diff_' + new Date().toISOString().slice(0, 10) + '.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  /**
+   * 保存对比状态到localStorage
+   */
+  function saveDiffState(diffState) {
+    try {
+      const data = {
+        active: diffState.active,
+        filters: diffState.filters,
+        replayIndex: typeof AlertReplay !== 'undefined' ? AlertReplay.getState().currentIndex : -1,
+        savedAt: new Date().toISOString(),
+      };
+      localStorage.setItem(DIFF_STATE_KEY, JSON.stringify(data));
+      return true;
+    } catch (err) {
+      console.warn('保存对比状态失败:', err);
+      return false;
+    }
+  }
+
+  /**
+   * 加载对比状态
+   */
+  function loadDiffState() {
+    try {
+      const raw = localStorage.getItem(DIFF_STATE_KEY);
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch (err) {
+      return null;
+    }
+  }
+
+  /**
+   * 清除对比状态
+   */
+  function clearDiffState() {
+    localStorage.removeItem(DIFF_STATE_KEY);
   }
 
   /**
@@ -323,7 +383,12 @@ const ImportExport = (() => {
     loadSavedData,
     clearStorage,
     showValidationDialog,
+    exportDiffData,
+    saveDiffState,
+    loadDiffState,
+    clearDiffState,
     STORAGE_KEY,
     LAYOUT_KEY,
+    DIFF_STATE_KEY,
   };
 })();

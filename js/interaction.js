@@ -424,12 +424,17 @@ const Interaction = (() => {
         n._visible = true;
         n._selected = false;
         n._highlighted = false;
+        n._diffStatus = null;
+        n._diffChanges = null;
+        n._diffSource = null;
       }
     }
     if (appState.links) {
       for (const l of appState.links) {
         l._visible = true;
         l._highlighted = false;
+        l._diffStatus = null;
+        l._diffChanges = null;
       }
     }
 
@@ -764,6 +769,11 @@ const Interaction = (() => {
       ${metaHtml}
     `;
 
+    // 对比模式下追加差异详情
+    if (typeof TopologyDiff !== 'undefined' && TopologyDiff.isDiffMode() && node._diffStatus) {
+      content.innerHTML += TopologyDiff.getDiffDetailHtml(node);
+    }
+
     panel.classList.remove('hidden');
   }
 
@@ -946,6 +956,46 @@ const Interaction = (() => {
     Renderer.render(appState);
   }
 
+  /**
+   * 绑定差异筛选事件（对比模式）
+   */
+  function bindDiffFilterEvents() {
+    // 差异状态筛选
+    document.querySelectorAll('#diff-filters input[data-diff-filter]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        TopologyDiff.setDiffFilter(cb.dataset.diffFilter, cb.checked);
+        TopologyDiff.applyDiffFilters(appState);
+        // 叠加节点类型筛选
+        document.querySelectorAll('#type-filters input').forEach(typeCb => {
+          if (!typeCb.checked) {
+            for (const node of appState.nodes) {
+              if (node.type === typeCb.dataset.type) node._visible = false;
+            }
+          }
+        });
+        // 更新链路可见性
+        for (const link of appState.links) {
+          const src = appState.nodeMap.get(link.source);
+          const tgt = appState.nodeMap.get(link.target);
+          if (!src || src._visible === false || !tgt || tgt._visible === false) {
+            link._visible = false;
+          }
+        }
+        LayoutEngine.computeGroupBounds(appState.groups, appState.nodeMap);
+        renderAll();
+        updateStats();
+      });
+    });
+
+    // 告警等级筛选
+    document.querySelectorAll('#diff-severity-filters input[data-diff-filter]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        TopologyDiff.setDiffFilter(cb.dataset.diffFilter, cb.checked);
+        updateEventList(appState.alerts, AlertReplay.getState().currentIndex);
+      });
+    });
+  }
+
   function escapeHtml(str) {
     const div = document.createElement('div');
     div.textContent = str;
@@ -970,6 +1020,7 @@ const Interaction = (() => {
     updateGroupList,
     updateEventList,
     renderAll,
+    bindDiffFilterEvents,
     getSelectedNodes: () => selectedNodes,
   };
 })();

@@ -154,6 +154,22 @@ const App = (() => {
       Interaction.clearHighlights();
       Interaction.renderAll();
     });
+
+    // 关闭差异详情面板
+    document.getElementById('btn-close-diff-detail').addEventListener('click', () => {
+      document.getElementById('diff-detail-panel').classList.add('hidden');
+    });
+
+    // 对比模式
+    document.getElementById('btn-diff-mode').addEventListener('click', showDiffImportDialog);
+
+    document.getElementById('btn-exit-diff').addEventListener('click', doExitDiffMode);
+
+    document.getElementById('btn-export-diff').addEventListener('click', () => {
+      if (TopologyDiff.isDiffMode()) {
+        ImportExport.exportDiffData(TopologyDiff.diffState);
+      }
+    });
   }
 
   /**
@@ -239,6 +255,185 @@ const App = (() => {
     Interaction.updateGroupList();
     Interaction.updateEventList([], -1);
     Interaction.renderAll();
+  }
+
+  // ========== 对比模式 ==========
+
+  let diffRawA = null;
+  let diffRawB = null;
+
+  function showDiffImportDialog() {
+    const dialog = document.getElementById('diff-import-dialog');
+    dialog.classList.remove('hidden');
+    diffRawA = null;
+    diffRawB = null;
+    document.getElementById('diff-file-a').textContent = '未选择';
+    document.getElementById('diff-file-b').textContent = '未选择';
+    document.getElementById('diff-step-a').classList.remove('loaded');
+    document.getElementById('diff-step-b').classList.remove('loaded');
+    document.getElementById('btn-diff-start').disabled = true;
+
+    function checkReady() {
+      document.getElementById('btn-diff-start').disabled = !(diffRawA && diffRawB);
+    }
+
+    document.getElementById('btn-import-snapshot-a').onclick = () => {
+      const input = document.getElementById('file-input-a');
+      input.value = '';
+      input.onchange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          try {
+            diffRawA = JSON.parse(ev.target.result);
+            document.getElementById('diff-file-a').textContent = file.name;
+            document.getElementById('diff-step-a').classList.add('loaded');
+            checkReady();
+          } catch (err) {
+            alert('快照A解析失败: ' + err.message);
+          }
+        };
+        reader.readAsText(file);
+      };
+      input.click();
+    };
+
+    document.getElementById('btn-import-snapshot-b').onclick = () => {
+      const input = document.getElementById('file-input-b');
+      input.value = '';
+      input.onchange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          try {
+            diffRawB = JSON.parse(ev.target.result);
+            document.getElementById('diff-file-b').textContent = file.name;
+            document.getElementById('diff-step-b').classList.add('loaded');
+            checkReady();
+          } catch (err) {
+            alert('快照B解析失败: ' + err.message);
+          }
+        };
+        reader.readAsText(file);
+      };
+      input.click();
+    };
+
+    document.getElementById('btn-diff-start').onclick = async () => {
+      dialog.classList.add('hidden');
+      await doEnterDiffMode(diffRawA, diffRawB);
+    };
+
+    document.getElementById('btn-diff-cancel').onclick = () => {
+      dialog.classList.add('hidden');
+    };
+  }
+
+  async function doEnterDiffMode(rawA, rawB) {
+    const result = TopologyDiff.enterDiffMode(rawA, rawB);
+
+    // 显示验证消息
+    if (result.messages && result.messages.length > 0) {
+      const proceed = await ImportExport.showValidationDialog(result.messages);
+      if (!proceed) {
+        TopologyDiff.exitDiffMode();
+        return;
+      }
+    }
+
+    if (!result.data) {
+      TopologyDiff.exitDiffMode();
+      return;
+    }
+
+    // 重置现有状态
+    AlertReplay.reset();
+    Interaction.resetState();
+
+    // 加载合并拓扑到全局状态
+    state.nodes = result.data.nodes;
+    state.links = result.data.links;
+    state.groups = result.data.groups;
+    state.alerts = result.data.alerts;
+    state.nodeMap = result.data.nodeMap;
+    state.signature = result.data.signature;
+    state.selectedNodes = [];
+
+    // 布局
+    const bounds = Renderer.getCanvasSize();
+    if (bounds.width > 0 && bounds.height > 0 && state.nodes.length > 0) {
+      await LayoutEngine.layout(state.nodes, state.links, state.groups, bounds);
+      LayoutEngine.resolveCollisions(state.nodes.filter(n => n._visible !== false));
+    }
+    LayoutEngine.computeGroupBounds(state.groups, state.nodeMap);
+
+    // 设置回放
+    AlertReplay.saveOriginalStatus();
+    AlertReplay.setAlerts(state.alerts);
+
+    // 更新UI
+    Renderer.fitToView(state.nodes);
+    Interaction.updateStats();
+    Interaction.updateGroupList();
+    Interaction.bindDiffFilterEvents();
+    Interaction.renderAll();
+
+    // 显示对比UI
+    document.getElementById('diff-summary-panel').classList.remove('hidden');
+    document.getElementById('diff-mode-banner').classList.remove('hidden');
+    document.getElementById('btn-exit-diff').classList.remove('hidden');
+    document.getElementById('btn-diff-mode').classList.add('hidden');
+
+    // 更新差异统计
+    const summary = TopologyDiff.diffState.diff.summary;
+    document.getElementById('stat-diff-added').textContent = summary.addedNodes;
+    document.getElementById('stat-diff-deleted').textContent = summary.deletedNodes;
+    document.getElementById('stat-diff-changed').textContent = summary.changedNodes;
+    document.getElementById('stat-diff-unchanged').textContent =
+      summary.totalNodesB - summary.addedNodes - summary.changedNodes;
+    document.getElementById('diff-banner-info').textContent =
+      'A (' + summary.totalNodesA + '节点) vs B (' + summary.totalNodesB + '节点)';
+
+    // 持久化
+    ImportExport.saveDiffState(TopologyDiff.diffState);
+
+    showToast('已进入拓扑对比模式');
+  }
+
+  function doExitDiffMode() {
+    TopologyDiff.exitDiffMode();
+    AlertReplay.reset();
+    Interaction.resetState();
+
+    // 清空状态
+    state.nodes = [];
+    state.links = [];
+    state.groups = [];
+    state.alerts = [];
+    state.nodeMap = new Map();
+    state.selectedNodes = [];
+
+    // 隐藏对比UI
+    document.getElementById('diff-summary-panel').classList.add('hidden');
+    document.getElementById('diff-mode-banner').classList.add('hidden');
+    document.getElementById('btn-exit-diff').classList.add('hidden');
+    document.getElementById('btn-diff-mode').classList.remove('hidden');
+    document.getElementById('diff-detail-panel').classList.add('hidden');
+
+    // 清除持久化
+    ImportExport.clearDiffState();
+
+    // 尝试恢复之前的单拓扑
+    const savedData = ImportExport.loadSavedData();
+    if (savedData) {
+      loadData(savedData, false);
+    } else {
+      updateEmptyState();
+    }
+
+    showToast('已退出对比模式');
   }
 
   /**

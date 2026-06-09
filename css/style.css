@@ -26,6 +26,10 @@
   --status-warning: #ffaa4a;
   --status-critical: #ff4a6a;
   --status-offline: #5a6a7a;
+  --diff-added: #4aff8a;
+  --diff-deleted: #ff4a6a;
+  --diff-changed: #ffaa4a;
+  --diff-unchanged: #5a6a7a;
   --toolbar-height: 48px;
   --timeline-height: 56px;
   --panel-width: 260px;
@@ -848,4 +852,145 @@ html, body {
 @media (max-width: 900px) {
   #left-panel { display: none; }
   :root { --panel-width: 200px; }
+}
+
+/* ===== Diff Mode Styles ===== */
+
+.diff-mode-banner {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--accent-blue);
+  border-radius: var(--radius);
+  font-size: 12px;
+  color: var(--accent-blue);
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: var(--shadow);
+  white-space: nowrap;
+}
+
+.diff-mode-banner button {
+  padding: 2px 8px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  transition: background var(--transition);
+}
+
+.diff-mode-banner button:hover {
+  background: var(--bg-hover);
+}
+
+.stat-value.diff-added { color: var(--diff-added); }
+.stat-value.diff-deleted { color: var(--diff-deleted); }
+.stat-value.diff-changed { color: var(--diff-changed); }
+
+.diff-import-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.diff-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius);
+  border: 1px solid var(--border-color);
+  transition: border-color var(--transition);
+}
+
+.diff-step.loaded {
+  border-color: var(--accent-green);
+}
+
+.diff-step-label {
+  font-size: 12px;
+  font-weight: 600;
+  min-width: 130px;
+  color: var(--text-primary);
+}
+
+.diff-file-name {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 140px;
+}
+
+.diff-step.loaded .diff-file-name {
+  color: var(--accent-green);
+}
+
+.diff-detail-section {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-color);
+}
+
+.diff-change-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(42, 58, 74, 0.3);
+  font-size: 11px;
+  color: var(--text-primary);
+  gap: 8px;
+}
+
+.diff-change-row:last-child {
+  border-bottom: none;
+}
+
+.diff-before {
+  color: var(--diff-deleted);
+  text-decoration: line-through;
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.diff-after {
+  color: var(--diff-added);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.diff-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.diff-badge.added { background: rgba(74, 255, 138, 0.15); color: var(--diff-added); }
+.diff-badge.deleted { background: rgba(255, 74, 106, 0.15); color: var(--diff-deleted); }
+.diff-badge.changed { background: rgba(255, 170, 74, 0.15); color: var(--diff-changed); }
+.diff-badge.unchanged { background: rgba(90, 106, 122, 0.15); color: var(--diff-unchanged); }
+
+#diff-summary-panel h4 {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin: 8px 0 4px;
+}
+
+#diff-severity-filters {
+  margin-top: 4px;
 }
